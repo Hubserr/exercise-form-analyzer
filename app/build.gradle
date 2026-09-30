@@ -21,11 +21,11 @@ plugins {
 }
 
 android {
-    namespace 'com.google.mediapipe.examples.poselandmarker'
+    namespace 'com.formanalyzer.app'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.google.mediapipe.examples.poselandmarker"
+        applicationId "com.formanalyzer.app"
         minSdk 24
         targetSdk 34
         versionCode 1

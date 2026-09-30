@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package com.google.mediapipe.examples.poselandmarker
+package com.formanalyzer.app
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
-import com.google.mediapipe.examples.poselandmarker.databinding.ActivityMainBinding
+import com.formanalyzer.app.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
     private lateinit var activityMainBinding: ActivityMainBinding

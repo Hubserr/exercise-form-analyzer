@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.mediapipe.examples.poselandmarker.fragment
+package com.formanalyzer.app.fragment
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
@@ -35,10 +35,10 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.Navigation
-import com.google.mediapipe.examples.poselandmarker.PoseLandmarkerHelper
-import com.google.mediapipe.examples.poselandmarker.MainViewModel
-import com.google.mediapipe.examples.poselandmarker.R
-import com.google.mediapipe.examples.poselandmarker.databinding.FragmentCameraBinding
+import com.formanalyzer.app.PoseLandmarkerHelper
+import com.formanalyzer.app.MainViewModel
+import com.formanalyzer.app.R
+import com.formanalyzer.app.databinding.FragmentCameraBinding
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import java.util.Locale
 import java.util.concurrent.ExecutorService

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.google.mediapipe.examples.poselandmarker.fragment
+package com.formanalyzer.app.fragment
 
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
@@ -31,9 +31,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import com.google.mediapipe.examples.poselandmarker.MainViewModel
-import com.google.mediapipe.examples.poselandmarker.PoseLandmarkerHelper
-import com.google.mediapipe.examples.poselandmarker.databinding.FragmentGalleryBinding
+import com.formanalyzer.app.MainViewModel
+import com.formanalyzer.app.PoseLandmarkerHelper
+import com.formanalyzer.app.databinding.FragmentGalleryBinding
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import java.util.*
 import java.util.concurrent.Executors

@@ -1,4 +1,4 @@
-package com.google.mediapipe.examples.poselandmarker
+package com.formanalyzer.app
 
 import org.junit.Test
 
