@@ -44,8 +44,5 @@
             app:popUpToInclusive="true" />
     </fragment>
 
-    <fragment
-        android:id="@+id/gallery_fragment"
-        android:name="com.formanalyzer.app.fragment.GalleryFragment"
-        android:label="GalleryFragment" />
+
 </navigation>
