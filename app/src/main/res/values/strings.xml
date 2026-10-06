@@ -54,4 +54,15 @@
         <item>Pose Landmarker Lite</item>
         <item>Pose Landmarker Heavy</item>
     </string-array>
+
+    <!-- Squat analysis -->
+    <string name="squat_reps">Reps: %1$d</string>
+    <string name="squat_status">Knee: %1$.0f° · %2$s</string>
+    <string name="squat_no_person">Step into frame</string>
+    <string name="squat_phase_standing">standing</string>
+    <string name="squat_phase_descending">descending</string>
+    <string name="squat_phase_ascending">ascending</string>
+    <string name="squat_last_rep_ok">Rep %1$d: OK (min %2$.0f°)</string>
+    <string name="squat_last_rep_errors">Rep %1$d: %3$s (min %2$.0f°)</string>
+    <string name="squat_error_insufficient_depth">too shallow</string>
 </resources>

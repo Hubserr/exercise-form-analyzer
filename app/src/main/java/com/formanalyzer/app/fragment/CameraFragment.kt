@@ -44,6 +44,12 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.formanalyzer.app.squat.SquatAnalysisState
+import com.formanalyzer.app.squat.SquatAnalyzer
+import com.formanalyzer.app.squat.SquatErrorType
+import com.formanalyzer.app.squat.SquatPhase
+import com.formanalyzer.app.squat.SquatViewMode
+import com.formanalyzer.app.toPoseLandmarkPoint
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
@@ -62,7 +68,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
-    private var cameraFacing = CameraSelector.LENS_FACING_BACK
+    private var cameraFacing = CameraSelector.LENS_FACING_FRONT
+
+    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.SIDE)
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -373,12 +381,13 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             fragmentCameraBinding.viewFinder.display.rotation
     }
 
-    // Update UI after pose have been detected. Extracts original
-    // image height/width to scale and place the landmarks properly through
-    // OverlayView
+    // Runs the squat analysis on  the  MediaPipe result thread
     override fun onResults(
         resultBundle: PoseLandmarkerHelper.ResultBundle
     ) {
+
+        val analysisState = analyzeFrame(resultBundle)
+
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null) {
                 fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
@@ -394,9 +403,68 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
                 // Force a redraw
                 fragmentCameraBinding.overlay.invalidate()
+
+                updateSquatUi(analysisState)
             }
         }
     }
+
+    private fun analyzeFrame(resultBundle: PoseLandmarkerHelper.ResultBundle): SquatAnalysisState{
+        val landmarks = resultBundle.results.firstOrNull()
+            ?.landmarks()
+            ?.firstOrNull()
+            ?.map { it.toPoseLandmarkPoint() }
+            ?:emptyList()
+
+        val aspectRatio = resultBundle.inputImageWidth.toDouble() / resultBundle.inputImageHeight
+
+        return squatAnalyzer.processFrame(landmarks,aspectRatio)
+
+    }
+    private fun updateSquatUi(state: SquatAnalysisState){
+
+        val binding =  _fragmentCameraBinding ?: return
+        binding.repCountText.text =  getString(R.string.squat_reps,state.repCount)
+
+        val kneeAngle = state.currentKneeAngleDeg
+        binding.squatStatusText.text = if(state.personDetected&&kneeAngle!=null){
+            getString(R.string.squat_status, kneeAngle, phaseLabel(state.phase))
+        } else{
+            getString(R.string.squat_no_person)
+        }
+
+        state.lastCompletedRep?.let { rep->
+            binding.lastRepText.text = if (rep.isCorrect){
+                getString(R.string.squat_last_rep_ok,rep.repNumberval,rep.minKneeAngleDeg)
+            } else{
+                getString(
+                    R.string.squat_last_rep_errors,
+                    rep.repNumberval,
+                    rep.minKneeAngleDeg,
+                    rep.errors.joinToString( ", ") { errorLabel(it)}
+                )
+            }
+        }
+    }
+    private fun phaseLabel(phase: SquatPhase): String =getString(
+        when(phase){
+            SquatPhase.STANDING->R.string.squat_phase_standing
+            SquatPhase.DESCENDING->R.string.squat_phase_descending
+            SquatPhase.ASCENDING->R.string.squat_phase_ascending
+        }
+    )
+    private fun errorLabel(error: SquatErrorType): String = getString(
+        when (error) {
+            SquatErrorType.INSUFFICIENT_DEPTH -> R.string.squat_error_insufficient_depth
+            SquatErrorType.KNEE_VALGUS -> R.string.squat_error_insufficient_depth
+            SquatErrorType.EXCESSIVE_BACK_ROUNDING -> R.string.squat_error_insufficient_depth
+        }
+
+    )
+
+
+
+
 
     override fun onError(error: String, errorCode: Int) {
         activity?.runOnUiThread {
