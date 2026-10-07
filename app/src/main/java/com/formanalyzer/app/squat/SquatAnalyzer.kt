@@ -1,6 +1,7 @@
 package com.formanalyzer.app.squat
 
 import androidx.camera.core.AspectRatio
+import com.google.errorprone.annotations.Var
 import com.google.mediapipe.tasks.components.containers.Landmark
 
 
@@ -24,7 +25,10 @@ class SquatAnalyzer(
     private var phase = SquatPhase.STANDING
     private var repCount =0
 
+    private var standingKneeAngleBaseline = 180.0
+    private var standingKneeOffsetRatioBaseline = 0.0
     private var minKneeAngleInRep = Double.MAX_VALUE
+    private var maxKneeValgusDeviationDegInRep = 0.0
     private var errorsInRep = mutableSetOf<SquatErrorType>()
 
 
@@ -33,6 +37,8 @@ class SquatAnalyzer(
         smoother.reset()
         phase = SquatPhase.STANDING
         repCount =0
+        standingKneeAngleBaseline =180.0
+        standingKneeOffsetRatioBaseline =0.0
         clearRepAccumulators()
 
 
@@ -52,16 +58,28 @@ class SquatAnalyzer(
             return noDetectedState()
         }
         val landmarks = smoother.smooth(rawLandmarks)
+        val hip1 = landmarks[side.hip]
+        val knee = landmarks[side.knee]
+        val ankle = landmarks[side.ankle]
+        val hip2 = landmarks[if(side==leftSide) rightSide.hip else leftSide.hip]
+
         val kneeAngle = JointAngleCalculator.angleAt(
             landmarks[side.hip], landmarks[side.knee], landmarks[side.ankle], aspectRatio
         ) ?: return noDetectedState()
+
+        val hipWidth = JointAngleCalculator.segmentLength(hip1,hip2,aspectRatio).coerceAtLeast(MIN_HIP_WIDTH)
+        val kneeOffsetRatio = JointAngleCalculator.kneeCenterlineOffset(knee,hip1,hip2,aspectRatio)
+
 
         val mode = effectiveViewModel()
         val activeErrors = mutableSetOf<SquatErrorType>()
 
         when(phase ){
             SquatPhase.STANDING -> {
-                if( kneeAngle <config.descendingEntryKneeAngleDeg){
+                if( kneeAngle >= config.descendingEntryKneeAngleDeg){
+                    standingKneeAngleBaseline = kneeAngle
+                    standingKneeOffsetRatioBaseline = kneeOffsetRatio
+                } else{
                     phase = SquatPhase.DESCENDING
                     minKneeAngleInRep = kneeAngle
                 }
@@ -69,12 +87,12 @@ class SquatAnalyzer(
 
             SquatPhase.DESCENDING->{
             minKneeAngleInRep = minOf(minKneeAngleInRep,kneeAngle)
-                if(kneeAngle>minKneeAngleInRep + config.bottomHysterisisDeg){
-
+                if(mode== SquatViewMode.FRONT){
+                    trackKneeValgus(kneeAngle, kneeOffsetRatio)
+                }
+                if(kneeAngle>minKneeAngleInRep+config.bottomHysterisisDeg){
                     phase = SquatPhase.ASCENDING
-                    if(mode== SquatViewMode.SIDE&&minKneeAngleInRep>config.insufficientDepthKneeAngleDeg){
-                        activeErrors += SquatErrorType.INSUFFICIENT_DEPTH
-                    }
+                    activeErrors+=evaluateBottom(mode)
                 }
             }
 
@@ -109,6 +127,32 @@ class SquatAnalyzer(
 
     }
 
+    private fun trackKneeValgus(kneeAngle: Double,kneeOffsetRatio: Double){
+        val movedMedially  = kneeOffsetRatio<standingKneeOffsetRatioBaseline
+        if(movedMedially){
+            val deviation = standingKneeAngleBaseline - kneeAngle
+            maxKneeValgusDeviationDegInRep =maxOf(maxKneeValgusDeviationDegInRep,deviation)
+        }
+
+    }
+
+    private fun evaluateBottom(mode: SquatViewMode): Set<SquatErrorType>{
+        val errors = mutableSetOf<SquatErrorType>()
+        if(mode== SquatViewMode.SIDE&&minKneeAngleInRep>config.insufficientDepthKneeAngleDeg){
+            errors+= SquatErrorType.INSUFFICIENT_DEPTH
+        }
+        if(mode== SquatViewMode.FRONT&&maxKneeValgusDeviationDegInRep>=config.kneeValgusDeviationDeg){
+            errors+= SquatErrorType.KNEE_VALGUS
+        }
+        /*
+        if(mode== SquatViewMode.SIDE&& ){
+            errors+= SquatErrorType.EXCESSIVE_BACK_ROUNDING
+        }
+        */
+
+        return errors
+    }
+
     private fun effectiveViewModel(): SquatViewMode =
         if(viewMode == SquatViewMode.AUTO) SquatViewMode.SIDE else viewMode
 
@@ -139,7 +183,10 @@ class SquatAnalyzer(
         viewMode = effectiveViewModel()
     )
 
-
+    private companion object {
+        /** Lower bound for hip width - in a side view both hips nearly overlap. */
+        const val MIN_HIP_WIDTH = 0.01
+    }
 }
 
 

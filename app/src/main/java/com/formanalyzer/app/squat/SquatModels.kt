@@ -41,7 +41,10 @@ data class SquatAnalyzerConfig(
     val descendingEntryKneeAngleDeg: Double =150.0,
     val bottomHysterisisDeg: Double = 5.0,
     val insufficientDepthKneeAngleDeg: Double =90.0,
+    val kneeValgusDeviationDeg: Double = 10.0,
+
     val smoothingAlpha: Double =0.5
+
 
 ){
     init{

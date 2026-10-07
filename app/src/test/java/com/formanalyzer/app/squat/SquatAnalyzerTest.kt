@@ -128,4 +128,60 @@ class SquatAnalyzerTest {
 
         assertEquals(SquatViewMode.SIDE, state.viewMode)
     }
+
+
+
+    private fun frontPose(kneeShift: Double): List<PoseLandmarkPoint> {
+        val points = MutableList(33) { PoseLandmarkPoint(0.5, 0.5, visibility = 0.9) }
+        points[PoseLandmarkIndex.LEFT_SHOULDER] = PoseLandmarkPoint(0.55, 0.2, visibility = 0.9)
+        points[PoseLandmarkIndex.RIGHT_SHOULDER] = PoseLandmarkPoint(0.45, 0.2, visibility = 0.9)
+        points[PoseLandmarkIndex.LEFT_HIP] = PoseLandmarkPoint(0.55, 0.5, visibility = 0.9)
+        points[PoseLandmarkIndex.RIGHT_HIP] = PoseLandmarkPoint(0.45, 0.5, visibility = 0.9)
+        points[PoseLandmarkIndex.LEFT_KNEE] = PoseLandmarkPoint(0.55 - kneeShift, 0.7, visibility = 0.9)
+        points[PoseLandmarkIndex.RIGHT_KNEE] = PoseLandmarkPoint(0.45 + kneeShift, 0.7, visibility = 0.9)
+        points[PoseLandmarkIndex.LEFT_ANKLE] = PoseLandmarkPoint(0.55, 0.9, visibility = 0.9)
+        points[PoseLandmarkIndex.RIGHT_ANKLE] = PoseLandmarkPoint(0.45, 0.9, visibility = 0.9)
+        return points
+    }
+
+    private fun SquatAnalyzer.feedFront(vararg kneeShifts: Double): List<SquatAnalysisState> =
+        kneeShifts.map { processFrame(frontPose(it)) }
+
+
+    private val cavingIn = doubleArrayOf(0.0, 0.03, 0.06, 0.08, 0.06, 0.0)
+    private val pushedOut = doubleArrayOf(0.0, -0.03, -0.06, -0.08, -0.06, 0.0)
+
+    @Test
+    fun `knees caving in are reported as valgus in front view`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        val states = analyzer.feedFront(*cavingIn)
+
+        assertEquals(setOf(SquatErrorType.KNEE_VALGUS), states.last().lastCompletedRep!!.errors)
+    }
+
+    @Test
+    fun `knees pushed out are never reported as valgus`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        val states = analyzer.feedFront(*pushedOut)
+
+        assertTrue(states.last().lastCompletedRep!!.isCorrect)
+    }
+
+    @Test
+    fun `valgus below threshold is not reported`() {
+
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config.copy(kneeValgusDeviationDeg = 40.0))
+        val states = analyzer.feedFront(*cavingIn)
+
+        assertTrue(states.last().lastCompletedRep!!.isCorrect)
+    }
+
+    @Test
+    fun `side view never reports valgus`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedFront(*cavingIn)
+
+        assertFalse(SquatErrorType.KNEE_VALGUS in states.last().lastCompletedRep!!.errors)
+    }
+
 }

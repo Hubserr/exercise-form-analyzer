@@ -72,6 +72,42 @@ class JointAngleCalculatorTest {
         assertEquals(0.6, m.y,delta)
         assertEquals(0.5, m.visibility,delta)
     }
+    @Test
+    fun `segment length uses pythagoras`() {
+        assertEquals(0.5, JointAngleCalculator.segmentLength(p(0.0, 0.0), p(0.3, 0.4)), delta)
+    }
 
+    @Test
+    fun `segment length applies aspect ratio to x`() {
+        val length = JointAngleCalculator.segmentLength(p(0.0, 0.0), p(0.5, 0.0), aspectRatio = 0.5)
+        assertEquals(0.25, length, delta)
+    }
+
+    @Test
+    fun `knee outside its hip gives positive offset`() {
+        val offset = JointAngleCalculator.kneeCenterlineOffset(
+            knee = p(0.65, 0.7), hip1 = p(0.6, 0.5), hip2 = p(0.4, 0.5)
+        )
+        assertEquals(0.15, offset, delta)
+    }
+
+    @Test
+    fun `knee past the centerline gives negative offset`() {
+        val offset = JointAngleCalculator.kneeCenterlineOffset(
+            knee = p(0.45, 0.7), hip1 = p(0.6, 0.5), hip2 = p(0.4, 0.5)
+        )
+        assertEquals(-0.05, offset, delta)
+    }
+
+    @Test
+    fun `offset is symmetric for left and right leg`() {
+        val right = JointAngleCalculator.kneeCenterlineOffset(
+            knee = p(0.65, 0.7), hip1 = p(0.6, 0.5), hip2 = p(0.4, 0.5)
+        )
+        val left = JointAngleCalculator.kneeCenterlineOffset(
+            knee = p(0.35, 0.7), hip1 = p(0.4, 0.5), hip2 = p(0.6, 0.5)
+        )
+        assertEquals(right, left, delta)
+    }
 
 }

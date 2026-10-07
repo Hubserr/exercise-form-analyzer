@@ -70,7 +70,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_FRONT
 
-    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.SIDE)
+    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.FRONT)
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -456,7 +456,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private fun errorLabel(error: SquatErrorType): String = getString(
         when (error) {
             SquatErrorType.INSUFFICIENT_DEPTH -> R.string.squat_error_insufficient_depth
-            SquatErrorType.KNEE_VALGUS -> R.string.squat_error_insufficient_depth
+            SquatErrorType.KNEE_VALGUS -> R.string.squat_error_knee_valgus
             SquatErrorType.EXCESSIVE_BACK_ROUNDING -> R.string.squat_error_insufficient_depth
         }
 

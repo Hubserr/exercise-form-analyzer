@@ -1,6 +1,5 @@
 package com.formanalyzer.app.squat
 
-import androidx.camera.core.AspectRatio
 import kotlin.math.hypot
 import kotlin.math.acos
 
@@ -63,5 +62,26 @@ object JointAngleCalculator{
         z =(a.z +b.z)/2,
         visibility = minOf(a.visibility,b.visibility)
     )
+    /**  length  beteen two landmarks */
+    fun segmentLength(
+        a: PoseLandmarkPoint,
+        b: PoseLandmarkPoint,
+        aspectRatio: Double =1.0
+    ): Double = hypot((a.x-b.x)*aspectRatio,(a.y-b.y))
+
+    /** Position of knee relative to  body centerline (midpoint beetween two hips)*/
+    fun kneeCenterlineOffset(
+        knee: PoseLandmarkPoint,
+        hip1: PoseLandmarkPoint,
+        hip2: PoseLandmarkPoint,
+        aspectRatio: Double=1.0
+    ): Double {
+        val centerX = (hip1.x + hip2.x)/2
+        val legSideSign = if(hip1.x >=centerX) 1.0 else -1.0
+        return (knee.x -centerX)*legSideSign * aspectRatio
+
+
+    }
+
 
 }

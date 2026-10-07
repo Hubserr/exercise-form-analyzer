@@ -65,4 +65,5 @@
     <string name="squat_last_rep_ok">Rep %1$d: OK (min %2$.0f°)</string>
     <string name="squat_last_rep_errors">Rep %1$d: %3$s (min %2$.0f°)</string>
     <string name="squat_error_insufficient_depth">too shallow</string>
+    <string name="squat_error_knee_valgus">knees caving in</string>
 </resources>
