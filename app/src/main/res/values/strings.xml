@@ -62,8 +62,9 @@
     <string name="squat_phase_standing">standing</string>
     <string name="squat_phase_descending">descending</string>
     <string name="squat_phase_ascending">ascending</string>
-    <string name="squat_last_rep_ok">Rep %1$d: OK (min %2$.0f°)</string>
-    <string name="squat_last_rep_errors">Rep %1$d: %3$s (min %2$.0f°)</string>
+    <string name="squat_last_rep_ok">Rep %1$d: OK (min %2$.0f°, back %3$.0f°/s)</string>
+    <string name="squat_last_rep_errors">Rep %1$d: %4$s (min %2$.0f°, back %3$.0f°/s)</string>
+    <string name="squat_error_back_rounding">back rounding</string>
     <string name="squat_error_insufficient_depth">too shallow</string>
     <string name="squat_error_knee_valgus">knees caving in</string>
 </resources>

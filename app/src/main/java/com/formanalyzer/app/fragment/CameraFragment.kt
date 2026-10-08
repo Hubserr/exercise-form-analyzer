@@ -70,7 +70,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_FRONT
 
-    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.FRONT)
+    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.SIDE)
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -410,6 +410,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     }
 
     private fun analyzeFrame(resultBundle: PoseLandmarkerHelper.ResultBundle): SquatAnalysisState{
+
+        val timestampMs = resultBundle.results.firstOrNull()?.timestampMs() ?: 0L
+
         val landmarks = resultBundle.results.firstOrNull()
             ?.landmarks()
             ?.firstOrNull()
@@ -418,7 +421,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         val aspectRatio = resultBundle.inputImageWidth.toDouble() / resultBundle.inputImageHeight
 
-        return squatAnalyzer.processFrame(landmarks,aspectRatio)
+        return squatAnalyzer.processFrame(landmarks,timestampMs,aspectRatio)
 
     }
     private fun updateSquatUi(state: SquatAnalysisState){
@@ -435,12 +438,13 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         state.lastCompletedRep?.let { rep->
             binding.lastRepText.text = if (rep.isCorrect){
-                getString(R.string.squat_last_rep_ok,rep.repNumberval,rep.minKneeAngleDeg)
+                getString(R.string.squat_last_rep_ok,rep.repNumberval,rep.minKneeAngleDeg,rep.maxTrunkLeanVelocityDegPerSec)
             } else{
                 getString(
                     R.string.squat_last_rep_errors,
                     rep.repNumberval,
                     rep.minKneeAngleDeg,
+                    rep.maxTrunkLeanVelocityDegPerSec,
                     rep.errors.joinToString( ", ") { errorLabel(it)}
                 )
             }

@@ -20,6 +20,7 @@ enum class SquatErrorType {
 data class RepAnalysis(
     val repNumberval :Int,
     val minKneeAngleDeg: Double,
+    val maxTrunkLeanVelocityDegPerSec: Double,
     val errors:Set<SquatErrorType>
 ){
     val isCorrect: Boolean
@@ -42,6 +43,7 @@ data class SquatAnalyzerConfig(
     val bottomHysterisisDeg: Double = 5.0,
     val insufficientDepthKneeAngleDeg: Double =90.0,
     val kneeValgusDeviationDeg: Double = 10.0,
+    val backRoundingVelocityDegPerSec: Double = 100.0,
 
     val smoothingAlpha: Double =0.5
 

@@ -14,10 +14,24 @@ class SquatAnalyzerTest {
     // Smoothing disabled (alpha = 1), each fame shows exactly the given angle
     private val config = SquatAnalyzerConfig(smoothingAlpha = 1.0)
 
+    private val frameMs =33L
+    private var clockMs = 0L
+
+    private fun SquatAnalyzer.step(pose: List<PoseLandmarkPoint>): SquatAnalysisState{
+        clockMs+=frameMs
+        return processFrame(pose, timestampMs =clockMs)
+    }
+
     /** Builds 33 landmarks of a side-vie pose with the given knee angle */
-    private fun poseWithKneeAngle(angleDeg: Double, visibility: Double = 0.9): List<PoseLandmarkPoint> {
+    private fun poseWithKneeAngle(
+        angleDeg: Double,
+        visibility: Double = 0.9,
+        trunkLeanDeg: Double=0.0
+    ): List<PoseLandmarkPoint> {
         val rad = Math.toRadians(angleDeg)
-        val shoulder = PoseLandmarkPoint(0.5, 0.1, visibility = visibility)
+        val leanRad = Math.toRadians(trunkLeanDeg)
+        // Shoulder placed so that the hip->shoulder segment leans trunkLeanDeg from vertical.
+        val shoulder = PoseLandmarkPoint(0.5+0.2*sin(leanRad), 0.3-0.2*cos(leanRad), visibility = visibility)
         val hip = PoseLandmarkPoint(0.5, 0.3, visibility = visibility)
         val knee = PoseLandmarkPoint(0.5, 0.5, visibility = visibility)
         // Ankle placed so that the hip-knee-ankle angle equals angleDeg
@@ -37,7 +51,18 @@ class SquatAnalyzerTest {
 
     /** Feeds a sequence of knee angles, one frame each, and returns all states */
     private fun SquatAnalyzer.feed(vararg angles: Double): List<SquatAnalysisState> =
-        angles.map { processFrame(poseWithKneeAngle(it)) }
+        angles.map { step(poseWithKneeAngle(it)) }
+
+    private fun SquatAnalyzer.feedFront(vararg kneeShifts: Double): List<SquatAnalysisState> =
+        kneeShifts.map { step(frontPose(it)) }
+
+    private fun SquatAnalyzer.feedWithLean(
+        kneeAngles: DoubleArray,
+        trunkLeans: DoubleArray
+    ): List<SquatAnalysisState> =
+        kneeAngles.zip(trunkLeans).map{
+            (knee,lean)->step(poseWithKneeAngle(knee,trunkLeanDeg=lean))
+        }
 
     @Test
     fun `deep rep is counted without errors`() {
@@ -104,7 +129,7 @@ class SquatAnalyzerTest {
     fun `low visibility means person not detected and keeps rep count`() {
         val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
         analyzer.feed(170.0, 140.0, 80.0, 90.0, 165.0)
-        val state = analyzer.processFrame(poseWithKneeAngle(170.0, visibility = 0.1))
+        val state = analyzer.step(poseWithKneeAngle(170.0, visibility = 0.1))
 
         assertFalse(state.personDetected)
         assertNull(state.currentKneeAngleDeg)
@@ -116,7 +141,7 @@ class SquatAnalyzerTest {
         val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
         analyzer.feed(170.0, 140.0, 80.0, 90.0, 165.0)
         analyzer.reset()
-        val state = analyzer.processFrame(poseWithKneeAngle(170.0))
+        val state = analyzer.step(poseWithKneeAngle(170.0))
 
         assertEquals(0, state.repCount)
     }
@@ -124,7 +149,7 @@ class SquatAnalyzerTest {
     @Test
     fun `auto mode currently reports side view`() {
         val analyzer = SquatAnalyzer(SquatViewMode.AUTO, config)
-        val state = analyzer.processFrame(poseWithKneeAngle(170.0))
+        val state = analyzer.step(poseWithKneeAngle(170.0))
 
         assertEquals(SquatViewMode.SIDE, state.viewMode)
     }
@@ -144,8 +169,6 @@ class SquatAnalyzerTest {
         return points
     }
 
-    private fun SquatAnalyzer.feedFront(vararg kneeShifts: Double): List<SquatAnalysisState> =
-        kneeShifts.map { processFrame(frontPose(it)) }
 
 
     private val cavingIn = doubleArrayOf(0.0, 0.03, 0.06, 0.08, 0.06, 0.0)
@@ -182,6 +205,71 @@ class SquatAnalyzerTest {
         val states = analyzer.feedFront(*cavingIn)
 
         assertFalse(SquatErrorType.KNEE_VALGUS in states.last().lastCompletedRep!!.errors)
+    }
+
+    // A full deep rep (minimum 80 deg, no depth error).
+    private val repKneeAngles = doubleArrayOf(170.0, 140.0, 110.0, 85.0, 80.0, 90.0, 120.0, 150.0, 165.0)
+
+    @Test
+    fun `gradual hip hinge is not reported as back rounding`() {
+        // 2 deg per 33 ms frame = about 61 deg/s, below the 100 deg/s threshold.
+        val leans = doubleArrayOf(0.0, 2.0, 4.0, 6.0, 8.0, 6.0, 4.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertTrue(states.last().lastCompletedRep!!.isCorrect)
+    }
+
+    @Test
+    fun `sudden trunk drop is reported as back rounding`() {
+        // 4 -> 14 deg in one 33 ms frame = about 303 deg/s.
+        val leans = doubleArrayOf(0.0, 2.0, 4.0, 14.0, 14.0, 10.0, 6.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertEquals(
+            setOf(SquatErrorType.EXCESSIVE_BACK_ROUNDING),
+            states.last().lastCompletedRep!!.errors
+        )
+    }
+
+    @Test
+    fun `back rounding stays reported until the rep ends`() {
+        val leans = doubleArrayOf(0.0, 2.0, 4.0, 14.0, 14.0, 10.0, 6.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertTrue(states.drop(3).all {
+            SquatErrorType.EXCESSIVE_BACK_ROUNDING in it.activeErrors
+        })
+    }
+
+    @Test
+    fun `fast straightening up is not reported`() {
+        // trunk returns from 8 to 0 deg in one frame - negative velocity.
+        val leans = doubleArrayOf(0.0, 2.0, 4.0, 6.0, 8.0, 8.0, 8.0, 0.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertTrue(states.last().lastCompletedRep!!.isCorrect)
+    }
+
+    @Test
+    fun `front view never reports back rounding`() {
+        val leans = doubleArrayOf(0.0, 2.0, 4.0, 14.0, 14.0, 10.0, 6.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertFalse(SquatErrorType.EXCESSIVE_BACK_ROUNDING in states.last().lastCompletedRep!!.errors)
+    }
+
+    @Test
+    fun `rep reports its highest trunk lean velocity`() {
+        val leans = doubleArrayOf(0.0, 2.0, 4.0, 14.0, 14.0, 10.0, 6.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertEquals(10.0 / 33.0 * 1000.0, states.last().lastCompletedRep!!.maxTrunkLeanVelocityDegPerSec, 1e-6)
     }
 
 }

@@ -27,8 +27,14 @@ class SquatAnalyzer(
 
     private var standingKneeAngleBaseline = 180.0
     private var standingKneeOffsetRatioBaseline = 0.0
+
+    private var previousTrunkLean: Double? = null
+    private var previousTrunkLeanTimestampMs: Long? = null
+
     private var minKneeAngleInRep = Double.MAX_VALUE
     private var maxKneeValgusDeviationDegInRep = 0.0
+
+    private var maxTrunkLeanVelocityInRep = 0.0
     private var errorsInRep = mutableSetOf<SquatErrorType>()
 
 
@@ -39,25 +45,32 @@ class SquatAnalyzer(
         repCount =0
         standingKneeAngleBaseline =180.0
         standingKneeOffsetRatioBaseline =0.0
+        previousTrunkLean = null
+        previousTrunkLeanTimestampMs = null
         clearRepAccumulators()
 
 
     }
     fun clearRepAccumulators(){
         minKneeAngleInRep = Double.MAX_VALUE
+        maxKneeValgusDeviationDegInRep =0.0
+        maxTrunkLeanVelocityInRep =0.0
         errorsInRep.clear()
     }
 
     fun processFrame(
         rawLandmarks: List<PoseLandmarkPoint>,
+        timestampMs: Long,
         aspectRatio: Double =1.0
     ): SquatAnalysisState {
         val side = selectReliableSide(rawLandmarks)
         if(side==null){
             smoother.reset()
+            previousTrunkLean =null
             return noDetectedState()
         }
         val landmarks = smoother.smooth(rawLandmarks)
+        val shoulder = landmarks[side.shoulder]
         val hip1 = landmarks[side.hip]
         val knee = landmarks[side.knee]
         val ankle = landmarks[side.ankle]
@@ -70,9 +83,19 @@ class SquatAnalyzer(
         val hipWidth = JointAngleCalculator.segmentLength(hip1,hip2,aspectRatio).coerceAtLeast(MIN_HIP_WIDTH)
         val kneeOffsetRatio = JointAngleCalculator.kneeCenterlineOffset(knee,hip1,hip2,aspectRatio)
 
+        val trunkLean = JointAngleCalculator.angleFromVertical(upper = shoulder, lower = hip1,aspectRatio =aspectRatio)
+        val trunkLeanVelocity = updateTrunkVelocity(trunkLean,timestampMs)
 
         val mode = effectiveViewModel()
         val activeErrors = mutableSetOf<SquatErrorType>()
+
+        if(phase!= SquatPhase.STANDING){
+            maxTrunkLeanVelocityInRep =maxOf( maxTrunkLeanVelocityInRep,trunkLeanVelocity)
+            if(mode== SquatViewMode.SIDE&&maxTrunkLeanVelocityInRep>config.backRoundingVelocityDegPerSec){
+                activeErrors+= SquatErrorType.EXCESSIVE_BACK_ROUNDING
+            }
+
+        }
 
         when(phase ){
             SquatPhase.STANDING -> {
@@ -110,6 +133,7 @@ class SquatAnalyzer(
             completedRep = RepAnalysis(
                 repNumberval = repCount,
                 minKneeAngleDeg = minKneeAngleInRep,
+                maxTrunkLeanVelocityDegPerSec = maxTrunkLeanVelocityInRep,
                 errors = errorsInRep.toSet()
             )
             phase = SquatPhase.STANDING
@@ -124,6 +148,20 @@ class SquatAnalyzer(
                 viewMode = mode,
                 lastCompletedRep = completedRep
             )
+
+    }
+
+    private fun updateTrunkVelocity(trunkLean: Double?, timestampMs: Long): Double{
+        val lastLean = previousTrunkLean
+        val lastTimestampMs = previousTrunkLeanTimestampMs
+        previousTrunkLean = trunkLean
+        previousTrunkLeanTimestampMs = timestampMs
+
+        if (trunkLean==null || lastLean == null || lastTimestampMs == null || timestampMs <= lastTimestampMs
+        ) {
+            return 0.0
+        }
+        return (trunkLean - lastLean) / (timestampMs - lastTimestampMs) * 1000.0
 
     }
 
@@ -144,11 +182,6 @@ class SquatAnalyzer(
         if(mode== SquatViewMode.FRONT&&maxKneeValgusDeviationDegInRep>=config.kneeValgusDeviationDeg){
             errors+= SquatErrorType.KNEE_VALGUS
         }
-        /*
-        if(mode== SquatViewMode.SIDE&& ){
-            errors+= SquatErrorType.EXCESSIVE_BACK_ROUNDING
-        }
-        */
 
         return errors
     }
