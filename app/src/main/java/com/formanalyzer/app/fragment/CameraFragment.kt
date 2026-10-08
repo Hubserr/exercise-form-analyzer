@@ -39,6 +39,7 @@ import com.formanalyzer.app.PoseLandmarkerHelper
 import com.formanalyzer.app.MainViewModel
 import com.formanalyzer.app.R
 import com.formanalyzer.app.databinding.FragmentCameraBinding
+import com.formanalyzer.app.debug.JitterLogger
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -55,6 +56,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     companion object {
         private const val TAG = "Pose Landmarker"
+        private const val ENABLE_JITTER_LOG = false
     }
 
     private var _fragmentCameraBinding: FragmentCameraBinding? = null
@@ -69,8 +71,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_FRONT
-
     private val squatAnalyzer = SquatAnalyzer(SquatViewMode.SIDE)
+    private val jitterLogger = if(ENABLE_JITTER_LOG) JitterLogger() else null
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ExecutorService
@@ -420,7 +422,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             ?:emptyList()
 
         val aspectRatio = resultBundle.inputImageWidth.toDouble() / resultBundle.inputImageHeight
-
+        jitterLogger?.log(landmarks, aspectRatio, timestampMs)
         return squatAnalyzer.processFrame(landmarks,timestampMs,aspectRatio)
 
     }
