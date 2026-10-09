@@ -147,11 +147,42 @@ class SquatAnalyzerTest {
     }
 
     @Test
-    fun `auto mode currently reports side view`() {
+    fun `auto mode starts in side view`() {
         val analyzer = SquatAnalyzer(SquatViewMode.AUTO, config)
         val state = analyzer.step(poseWithKneeAngle(170.0))
 
         assertEquals(SquatViewMode.SIDE, state.viewMode)
+    }
+
+    @Test
+    fun `auto mode switches to front after stable standing frames`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.AUTO, config)
+        val states = analyzer.feedFront(0.0, 0.0, 0.0, 0.0, 0.0)
+
+        assertEquals(SquatViewMode.SIDE, states[3].viewMode)   // 4 frames - not yet
+        assertEquals(SquatViewMode.FRONT, states[4].viewMode)  // 5th frame - switched
+    }
+
+    @Test
+    fun `a single side-looking frame cancels a pending switch`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.AUTO, config)
+        analyzer.feedFront(0.0, 0.0, 0.0, 0.0)
+        analyzer.step(poseWithKneeAngle(170.0))
+        val states = analyzer.feedFront(0.0, 0.0, 0.0, 0.0)
+
+        assertEquals(SquatViewMode.SIDE, states.last().viewMode)
+    }
+
+    @Test
+    fun `view never changes during a repetition`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.AUTO, config)
+        val start = analyzer.step(poseWithKneeAngle(170.0))
+        // Front-looking frames, but they form a rep (FPPA 147 -> 136 -> 147 -> 180).
+        val rep = analyzer.feedFront(0.06, 0.08, 0.06, 0.0)
+
+        assertEquals(SquatViewMode.SIDE, start.viewMode)
+        assertTrue(rep.all { it.viewMode == SquatViewMode.SIDE })
+        assertNotNull(rep.last().lastCompletedRep)
     }
 
 

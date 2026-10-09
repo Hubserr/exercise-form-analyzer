@@ -25,6 +25,10 @@ class SquatAnalyzer(
     private var phase = SquatPhase.STANDING
     private var repCount =0
 
+    private var detectedViewMode = SquatViewMode.SIDE
+    private var pendingViewMode: SquatViewMode ?= null
+    private var pendingViewFrames =0
+
     private var standingKneeAngleBaseline = 180.0
     private var standingKneeOffsetRatioBaseline = 0.0
 
@@ -47,6 +51,9 @@ class SquatAnalyzer(
         standingKneeOffsetRatioBaseline =0.0
         previousTrunkLean = null
         previousTrunkLeanTimestampMs = null
+        detectedViewMode = SquatViewMode.SIDE
+        pendingViewMode = null
+        pendingViewFrames =0
         clearRepAccumulators()
 
 
@@ -86,8 +93,18 @@ class SquatAnalyzer(
         val trunkLean = JointAngleCalculator.angleFromVertical(upper = shoulder, lower = hip1,aspectRatio =aspectRatio)
         val trunkLeanVelocity = updateTrunkVelocity(trunkLean,timestampMs)
 
+        if(viewMode== SquatViewMode.AUTO&&phase== SquatPhase.STANDING){
+            val legLength = JointAngleCalculator.segmentLength(hip1,ankle,aspectRatio)
+            if(legLength>0.0){
+                updateDetectedView(hipWidth/legLength)
+            }
+
+        }
+
         val mode = effectiveViewModel()
         val activeErrors = mutableSetOf<SquatErrorType>()
+
+
 
         if(phase!= SquatPhase.STANDING){
             maxTrunkLeanVelocityInRep =maxOf( maxTrunkLeanVelocityInRep,trunkLeanVelocity)
@@ -186,8 +203,32 @@ class SquatAnalyzer(
         return errors
     }
 
+    private  fun updateDetectedView(hipToLegRatio: Double){
+        val observed = if(hipToLegRatio>config.orientationFrontRatio){
+            SquatViewMode.FRONT
+        }else{
+            SquatViewMode.SIDE
+        }
+        if(observed==detectedViewMode){
+            pendingViewMode=null
+            pendingViewFrames=0
+            return
+        }
+        if(observed==pendingViewMode){
+            pendingViewFrames++
+        }else{
+            pendingViewMode=observed
+            pendingViewFrames =1
+        }
+        if(pendingViewFrames>=config.orientationStableFrames){
+            detectedViewMode=observed
+            pendingViewMode=null
+            pendingViewFrames =0
+        }
+
+    }
     private fun effectiveViewModel(): SquatViewMode =
-        if(viewMode == SquatViewMode.AUTO) SquatViewMode.SIDE else viewMode
+        if(viewMode == SquatViewMode.AUTO) detectedViewMode else viewMode
 
 
     private fun selectReliableSide(landmarks: List<PoseLandmarkPoint>): BodySide?{

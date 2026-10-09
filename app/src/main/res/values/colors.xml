@@ -28,4 +28,7 @@
     <color name="icActive">#FFFFFFFF</color>
     <color name="icFocused">#DDFFFFFF</color>
     <color name="icPressed">#AAFFFFFF</color>
+
+    <color name="framing_ok">#66BB6A</color>
+    <color name="framing_missing">#EF5350</color>
 </resources>

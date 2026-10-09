@@ -40,6 +40,7 @@ import com.formanalyzer.app.MainViewModel
 import com.formanalyzer.app.R
 import com.formanalyzer.app.databinding.FragmentCameraBinding
 import com.formanalyzer.app.debug.JitterLogger
+import com.formanalyzer.app.squat.FramingChecker
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -51,13 +52,20 @@ import com.formanalyzer.app.squat.SquatErrorType
 import com.formanalyzer.app.squat.SquatPhase
 import com.formanalyzer.app.squat.SquatViewMode
 import com.formanalyzer.app.toPoseLandmarkPoint
-
+import android.widget.TextView
+import com.formanalyzer.app.squat.BodyPart
+import com.formanalyzer.app.squat.FramingStatus
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     companion object {
         private const val TAG = "Pose Landmarker"
         private const val ENABLE_JITTER_LOG = false
     }
+
+    private data class SquatUiState(
+        val framing: FramingStatus,
+        val analysis: SquatAnalysisState?
+    )
 
     private var _fragmentCameraBinding: FragmentCameraBinding? = null
 
@@ -71,7 +79,9 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_FRONT
-    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.SIDE)
+    private val squatAnalyzer = SquatAnalyzer(SquatViewMode.AUTO)
+
+    private val framingChecker = FramingChecker()
     private val jitterLogger = if(ENABLE_JITTER_LOG) JitterLogger() else null
 
     /** Blocking ML operations are performed using this executor */
@@ -388,7 +398,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         resultBundle: PoseLandmarkerHelper.ResultBundle
     ) {
 
-        val analysisState = analyzeFrame(resultBundle)
+        val uiState = analyzeFrame(resultBundle)
 
         activity?.runOnUiThread {
             if (_fragmentCameraBinding != null) {
@@ -406,12 +416,12 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                 // Force a redraw
                 fragmentCameraBinding.overlay.invalidate()
 
-                updateSquatUi(analysisState)
+                updateSquatUi(uiState)
             }
         }
     }
 
-    private fun analyzeFrame(resultBundle: PoseLandmarkerHelper.ResultBundle): SquatAnalysisState{
+    private fun analyzeFrame(resultBundle: PoseLandmarkerHelper.ResultBundle): SquatUiState{
 
         val timestampMs = resultBundle.results.firstOrNull()?.timestampMs() ?: 0L
 
@@ -423,40 +433,105 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         val aspectRatio = resultBundle.inputImageWidth.toDouble() / resultBundle.inputImageHeight
         jitterLogger?.log(landmarks, aspectRatio, timestampMs)
-        return squatAnalyzer.processFrame(landmarks,timestampMs,aspectRatio)
+
+        val framing = framingChecker.update(landmarks)
+        val analysis = if (framing.isReady) {
+            squatAnalyzer.processFrame(
+                rawLandmarks = landmarks,
+                timestampMs = timestampMs,
+                aspectRatio = aspectRatio
+            )
+        } else {
+            null
+        }
+
+        return SquatUiState(framing, analysis)
 
     }
-    private fun updateSquatUi(state: SquatAnalysisState){
+    private fun updateSquatUi(uiState: SquatUiState) {
+        val binding = _fragmentCameraBinding ?: return
 
-        val binding =  _fragmentCameraBinding ?: return
-        binding.repCountText.text =  getString(R.string.squat_reps,state.repCount)
+        updateFramingChecklist(uiState.framing)
+
+        val state = uiState.analysis
+        if (state == null) {
+            binding.repCountText.text = getString(R.string.squat_reps, 0)
+            binding.squatStatusText.text = getString(R.string.squat_get_into_position)
+            return
+        }
+
+        binding.repCountText.text = getString(R.string.squat_reps, state.repCount)
 
         val kneeAngle = state.currentKneeAngleDeg
-        binding.squatStatusText.text = if(state.personDetected&&kneeAngle!=null){
-            getString(R.string.squat_status, kneeAngle, phaseLabel(state.phase))
-        } else{
+        binding.squatStatusText.text = if (state.personDetected && kneeAngle != null) {
+            getString(R.string.squat_status, kneeAngle, phaseLabel(state.phase),viewLabel(state.viewMode))
+        } else {
             getString(R.string.squat_no_person)
         }
 
-        state.lastCompletedRep?.let { rep->
-            binding.lastRepText.text = if (rep.isCorrect){
-                getString(R.string.squat_last_rep_ok,rep.repNumberval,rep.minKneeAngleDeg,rep.maxTrunkLeanVelocityDegPerSec)
-            } else{
+        state.lastCompletedRep?.let { rep ->
+            binding.lastRepText.text = if (rep.isCorrect) {
+                getString(
+                    R.string.squat_last_rep_ok,
+                    rep.repNumberval,
+                    rep.minKneeAngleDeg,
+                    rep.maxTrunkLeanVelocityDegPerSec
+                )
+            } else {
                 getString(
                     R.string.squat_last_rep_errors,
                     rep.repNumberval,
                     rep.minKneeAngleDeg,
                     rep.maxTrunkLeanVelocityDegPerSec,
-                    rep.errors.joinToString( ", ") { errorLabel(it)}
+                    rep.errors.joinToString(", ") { errorLabel(it) }
                 )
             }
         }
+    }
+
+    private fun updateFramingChecklist(framing: FramingStatus) {
+        val binding = _fragmentCameraBinding ?: return
+
+        if (framing.isReady) {
+            binding.framingChecklist.visibility = View.GONE
+            return
+        }
+        binding.framingChecklist.visibility = View.VISIBLE
+        setFramingItem(binding.framingHeadText, BodyPart.HEAD, R.string.framing_head, framing)
+        setFramingItem(binding.framingTorsoText, BodyPart.TORSO, R.string.framing_torso, framing)
+        setFramingItem(binding.framingLegsText, BodyPart.LEGS, R.string.framing_legs, framing)
+        setFramingItem(binding.framingFeetText, BodyPart.FEET, R.string.framing_feet, framing)
+    }
+
+    private fun setFramingItem(
+        view: TextView,
+        part: BodyPart,
+        labelRes: Int,
+        framing: FramingStatus
+    ) {
+        val visible = part in framing.visibleParts
+        val format = if (visible) R.string.framing_item_ok else R.string.framing_item_missing
+        view.text = getString(format, getString(labelRes))
+        view.setTextColor(
+            ContextCompat.getColor(
+                requireContext(),
+                if (visible) R.color.framing_ok else R.color.framing_missing
+            )
+        )
     }
     private fun phaseLabel(phase: SquatPhase): String =getString(
         when(phase){
             SquatPhase.STANDING->R.string.squat_phase_standing
             SquatPhase.DESCENDING->R.string.squat_phase_descending
             SquatPhase.ASCENDING->R.string.squat_phase_ascending
+        }
+    )
+
+    private fun viewLabel(view: SquatViewMode): String = getString(
+        when (view) {
+            SquatViewMode.SIDE -> R.string.squat_view_side
+            SquatViewMode.FRONT -> R.string.squat_view_front
+            SquatViewMode.AUTO -> R.string.squat_view_auto
         }
     )
     private fun errorLabel(error: SquatErrorType): String = getString(

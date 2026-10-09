@@ -44,6 +44,8 @@ data class SquatAnalyzerConfig(
     val insufficientDepthKneeAngleDeg: Double =90.0,
     val kneeValgusDeviationDeg: Double = 10.0,
     val backRoundingVelocityDegPerSec: Double = 100.0,
+    val orientationFrontRatio: Double = 0.20,
+    val orientationStableFrames: Int =5,
 
     val smoothingAlpha: Double =0.5
 

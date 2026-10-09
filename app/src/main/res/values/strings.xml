@@ -57,7 +57,10 @@
 
     <!-- Squat analysis -->
     <string name="squat_reps">Reps: %1$d</string>
-    <string name="squat_status">Knee: %1$.0f° · %2$s</string>
+    <string name="squat_status">Knee: %1$.0f° · %2$s · %3$s</string>
+    <string name="squat_view_side">side</string>
+    <string name="squat_view_front">front</string>
+    <string name="squat_view_auto">auto</string>
     <string name="squat_no_person">Step into frame</string>
     <string name="squat_phase_standing">standing</string>
     <string name="squat_phase_descending">descending</string>
@@ -67,4 +70,13 @@
     <string name="squat_error_back_rounding">back rounding</string>
     <string name="squat_error_insufficient_depth">too shallow</string>
     <string name="squat_error_knee_valgus">knees caving in</string>
+
+    <!-- Framing checklist -->
+    <string name="framing_item_ok">✓ %1$s</string>
+    <string name="framing_item_missing">✗ %1$s</string>
+    <string name="framing_head">Head</string>
+    <string name="framing_torso">Torso</string>
+    <string name="framing_legs">Legs</string>
+    <string name="framing_feet">Feet</string>
+    <string name="squat_get_into_position">Get into position: whole body in frame</string>
 </resources>
