@@ -79,4 +79,9 @@
     <string name="framing_legs">Legs</string>
     <string name="framing_feet">Feet</string>
     <string name="squat_get_into_position">Get into position: whole body in frame</string>
+
+    <!-- Voice cues-->
+    <string name="voice_insufficient_depth">Lower!</string>
+    <string name="voice_knee_valgus">Knees out!</string>
+    <string name="voice_back_rounding">Straighten your back!</string>
 </resources>

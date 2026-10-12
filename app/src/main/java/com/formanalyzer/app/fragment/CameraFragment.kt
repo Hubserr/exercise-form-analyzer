@@ -55,6 +55,8 @@ import com.formanalyzer.app.toPoseLandmarkPoint
 import android.widget.TextView
 import com.formanalyzer.app.squat.BodyPart
 import com.formanalyzer.app.squat.FramingStatus
+import com.formanalyzer.app.squat.ErrorFeedbackTracker
+import com.formanalyzer.app.voice.VoiceFeedbackManager
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     companion object {
@@ -80,6 +82,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraFacing = CameraSelector.LENS_FACING_FRONT
     private val squatAnalyzer = SquatAnalyzer(SquatViewMode.AUTO)
+    private val errorFeedbackTracker = ErrorFeedbackTracker()
+    private var voiceFeedback: VoiceFeedbackManager? = null
 
     private val framingChecker = FramingChecker()
     private val jitterLogger = if(ENABLE_JITTER_LOG) JitterLogger() else null
@@ -123,6 +127,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     override fun onDestroyView() {
         _fragmentCameraBinding = null
+        voiceFeedback?.shutdown()
+        voiceFeedback=null
         super.onDestroyView()
 
         // Shut down our background executor
@@ -146,6 +152,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     @SuppressLint("MissingPermission")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        voiceFeedback = VoiceFeedbackManager(requireContext())
 
         // Initialize our background executor
         backgroundExecutor = Executors.newSingleThreadExecutor()
@@ -460,6 +468,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             return
         }
 
+        errorFeedbackTracker.newErrors(state).forEach { error -> voiceFeedback?.speak(voiceCue(error)) }
+
         binding.repCountText.text = getString(R.string.squat_reps, state.repCount)
 
         val kneeAngle = state.currentKneeAngleDeg
@@ -539,6 +549,14 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             SquatErrorType.INSUFFICIENT_DEPTH -> R.string.squat_error_insufficient_depth
             SquatErrorType.KNEE_VALGUS -> R.string.squat_error_knee_valgus
             SquatErrorType.EXCESSIVE_BACK_ROUNDING -> R.string.squat_error_insufficient_depth
+        }
+
+    )
+    private fun voiceCue(error: SquatErrorType): String=getString(
+        when(error){
+            SquatErrorType.INSUFFICIENT_DEPTH -> R.string.voice_insufficient_depth
+            SquatErrorType.EXCESSIVE_BACK_ROUNDING -> R.string.voice_back_rounding
+            SquatErrorType.KNEE_VALGUS -> R.string.voice_knee_valgus
         }
 
     )
