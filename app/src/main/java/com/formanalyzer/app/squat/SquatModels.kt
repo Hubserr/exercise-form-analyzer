@@ -1,6 +1,5 @@
 package com.formanalyzer.app.squat
 
-import androidx.transition.Visibility
 
 enum class SquatPhase{
     STANDING,
@@ -18,7 +17,7 @@ enum class SquatErrorType {
     EXCESSIVE_BACK_ROUNDING
 }
 data class RepAnalysis(
-    val repNumberval :Int,
+    val repNumber :Int,
     val minKneeAngleDeg: Double,
     val maxTrunkLeanVelocityDegPerSec: Double,
     val errors:Set<SquatErrorType>
@@ -40,7 +39,7 @@ data class SquatAnalyzerConfig(
     val minVisibility: Double=0.5,
     val standingKneeAngleDeg: Double=160.0,
     val descendingEntryKneeAngleDeg: Double =150.0,
-    val bottomHysterisisDeg: Double = 5.0,
+    val bottomHysteresisDeg: Double = 5.0,
     val insufficientDepthKneeAngleDeg: Double =90.0,
     val kneeValgusDeviationDeg: Double = 10.0,
     val backRoundingVelocityDegPerSec: Double = 100.0,
@@ -55,6 +54,6 @@ data class SquatAnalyzerConfig(
         require(descendingEntryKneeAngleDeg<standingKneeAngleDeg){
             "descendingEntryKneeAngleDeg must be lower than standingKneeAngleDeg"
         }
-        require(bottomHysterisisDeg>=0.0){"bottomHysteresisDeg must not be negative" }
+        require(bottomHysteresisDeg>=0.0){"bottomHysteresisDeg must not be negative" }
     }
 }

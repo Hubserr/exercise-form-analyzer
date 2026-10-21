@@ -1,7 +1,5 @@
 package com.formanalyzer.app.squat
 
-import androidx.transition.Visibility
-
 
 /**
  *  A single body landmark:

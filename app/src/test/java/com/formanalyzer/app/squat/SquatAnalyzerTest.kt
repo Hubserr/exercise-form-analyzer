@@ -71,7 +71,7 @@ class SquatAnalyzerTest {
 
         val rep = states.last().lastCompletedRep
         assertNotNull(rep)
-        assertEquals(1, rep!!.repNumberval)
+        assertEquals(1, rep!!.repNumber)
         assertEquals(80.0, rep.minKneeAngleDeg, 1e-6)
         assertTrue(rep.isCorrect)
         assertEquals(1, states.last().repCount)
@@ -114,7 +114,7 @@ class SquatAnalyzerTest {
         val states = analyzer.feed(140.0, 85.0, 80.0, 90.0, 165.0)
 
         assertEquals(2, states.last().repCount)
-        assertEquals(2, states.last().lastCompletedRep!!.repNumberval)
+        assertEquals(2, states.last().lastCompletedRep!!.repNumber)
     }
 
     @Test

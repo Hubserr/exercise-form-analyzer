@@ -1,9 +1,5 @@
 package com.formanalyzer.app.squat
 
-import androidx.camera.core.AspectRatio
-import com.google.errorprone.annotations.Var
-import com.google.mediapipe.tasks.components.containers.Landmark
-
 
 class SquatAnalyzer(
     private val viewMode: SquatViewMode,
@@ -130,7 +126,7 @@ class SquatAnalyzer(
                 if(mode== SquatViewMode.FRONT){
                     trackKneeValgus(kneeAngle, kneeOffsetRatio)
                 }
-                if(kneeAngle>minKneeAngleInRep+config.bottomHysterisisDeg){
+                if(kneeAngle>minKneeAngleInRep+config.bottomHysteresisDeg){
                     phase = SquatPhase.ASCENDING
                     activeErrors+=evaluateBottom(mode)
                 }
@@ -148,7 +144,7 @@ class SquatAnalyzer(
         if(phase== SquatPhase.ASCENDING&&kneeAngle>=config.standingKneeAngleDeg) {
             repCount++
             completedRep = RepAnalysis(
-                repNumberval = repCount,
+                repNumber = repCount,
                 minKneeAngleDeg = minKneeAngleInRep,
                 maxTrunkLeanVelocityDegPerSec = maxTrunkLeanVelocityInRep,
                 errors = errorsInRep.toSet()

@@ -17,6 +17,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
     id 'de.undercouch.download'
 }
 
@@ -44,10 +45,11 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    kotlinOptions {
-        jvmTarget = '1.8'
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = '1.8'
+        }
     }
-
     buildFeatures {
         viewBinding true
     }
@@ -72,6 +74,16 @@ dependencies {
     def nav_version = "2.5.3"
     implementation "androidx.navigation:navigation-fragment-ktx:$nav_version"
     implementation "androidx.navigation:navigation-ui-ktx:$nav_version"
+
+
+    // Room - local database for training history
+    def room_version = '2.5.2'
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    kapt "androidx.room:room-compiler:$room_version"
+
+    // Coroutines scope tied to the fragment lifecycle (lifecycleScope)
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.5.1'
 
     // CameraX core library
     def camerax_version = '1.4.2'
@@ -98,4 +110,7 @@ dependencies {
 
     // MediaPipe Library
     implementation 'com.google.mediapipe:tasks-vision:1.0.0'
+
+    // Scrollable lists (training history)
+    implementation 'androidx.recyclerview:recyclerview:1.2.1'
 }

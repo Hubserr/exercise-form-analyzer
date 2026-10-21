@@ -29,8 +29,6 @@
         threshold of pose detect results button</string>
     <string name="alt_bottom_sheet_threshold_button_plus">Increasing
         threshold of pose detect results button</string>
-    <string name="tv_gallery_placeholder">Click + to add an image or a video
-        to begin running the pose landmarker.</string>
 
     <string name="label_inference_time">Inference Time</string>
     <string name="label_fps">Frames per Second</string>
@@ -84,4 +82,16 @@
     <string name="voice_insufficient_depth">Lower!</string>
     <string name="voice_knee_valgus">Knees out!</string>
     <string name="voice_back_rounding">Straighten your back!</string>
+
+    <!-- Set -->
+    <string name="finish_set">Finish set</string>
+    <string name="set_summary_title">Set summary</string>
+    <string name="set_summary_message">Reps: %1$d (correct: %2$d)\nToo shallow: %3$d\nKnees caving in: %4$d\nBack rounding: %5$d\nDuration: %6$s</string>
+
+    <!-- History -->
+    <string name="history">History</string>
+    <string name="history_empty">No saved sets yet</string>
+    <string name="history_reps">Reps: %1$d (correct: %2$d) · %3$s</string>
+    <string name="history_errors">Too shallow: %1$d · Knees caving in: %2$d · Back rounding: %3$d</string>
+    <string name="home_start_squat">Squat</string>
 </resources>

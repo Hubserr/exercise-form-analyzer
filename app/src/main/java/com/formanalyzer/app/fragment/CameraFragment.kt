@@ -23,40 +23,49 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
+import android.widget.TextView
 import android.widget.Toast
-import androidx.camera.core.Preview
+import androidx.appcompat.app.AlertDialog
+import androidx.camera.core.AspectRatio
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import androidx.camera.core.Camera
-import androidx.camera.core.AspectRatio
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.Navigation
-import com.formanalyzer.app.PoseLandmarkerHelper
 import com.formanalyzer.app.MainViewModel
+import com.formanalyzer.app.PoseLandmarkerHelper
 import com.formanalyzer.app.R
+import com.formanalyzer.app.data.AppDatabase
+import com.formanalyzer.app.data.TrainingSessionRepository
 import com.formanalyzer.app.databinding.FragmentCameraBinding
 import com.formanalyzer.app.debug.JitterLogger
+import com.formanalyzer.app.squat.BodyPart
+import com.formanalyzer.app.squat.ErrorFeedbackTracker
 import com.formanalyzer.app.squat.FramingChecker
-import com.google.mediapipe.tasks.vision.core.RunningMode
-import java.util.Locale
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
+import com.formanalyzer.app.squat.FramingStatus
+import com.formanalyzer.app.squat.SessionRecorder
+import com.formanalyzer.app.squat.SessionSummary
 import com.formanalyzer.app.squat.SquatAnalysisState
 import com.formanalyzer.app.squat.SquatAnalyzer
 import com.formanalyzer.app.squat.SquatErrorType
 import com.formanalyzer.app.squat.SquatPhase
 import com.formanalyzer.app.squat.SquatViewMode
 import com.formanalyzer.app.toPoseLandmarkPoint
-import android.widget.TextView
-import com.formanalyzer.app.squat.BodyPart
-import com.formanalyzer.app.squat.FramingStatus
-import com.formanalyzer.app.squat.ErrorFeedbackTracker
 import com.formanalyzer.app.voice.VoiceFeedbackManager
+import com.google.mediapipe.tasks.vision.core.RunningMode
+import kotlinx.coroutines.launch
+import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     companion object {
@@ -65,6 +74,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     }
 
     private data class SquatUiState(
+        /** Set in which this frame was analyzed*/
+        val generation: Int,
         val framing: FramingStatus,
         val analysis: SquatAnalysisState?
     )
@@ -84,6 +95,19 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private val squatAnalyzer = SquatAnalyzer(SquatViewMode.AUTO)
     private val errorFeedbackTracker = ErrorFeedbackTracker()
     private var voiceFeedback: VoiceFeedbackManager? = null
+    /** Collects the reps of the current set*/
+    private val sessionRecorder = SessionRecorder()
+
+    /** incremented when set is finished, frames analyzedd for an older set are dropped*/
+    @Volatile
+    private var sessionGeneration = 0
+
+
+    private var analyzedGeneration = 0
+
+    private val trainingRepository by lazy {
+        TrainingSessionRepository(AppDatabase.getInstance(requireContext()))
+    }
 
     private val framingChecker = FramingChecker()
     private val jitterLogger = if(ENABLE_JITTER_LOG) JitterLogger() else null
@@ -155,6 +179,10 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         voiceFeedback = VoiceFeedbackManager(requireContext())
 
+        sessionRecorder.finish(System.currentTimeMillis())
+        startNewSet()
+
+        fragmentCameraBinding.finishSetButton.setOnClickListener { finishSet() }
         // Initialize our background executor
         backgroundExecutor = Executors.newSingleThreadExecutor()
 
@@ -432,7 +460,14 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private fun analyzeFrame(resultBundle: PoseLandmarkerHelper.ResultBundle): SquatUiState{
 
         val timestampMs = resultBundle.results.firstOrNull()?.timestampMs() ?: 0L
-
+        val generation = sessionGeneration
+        if(generation != analyzedGeneration){
+            // New set was started from UI thread. Reset here, on the analyis thread so the analyzer
+            // and the framing check are never used from two threads at once
+            squatAnalyzer.reset()
+            framingChecker.reset()
+            analyzedGeneration = generation
+        }
         val landmarks = resultBundle.results.firstOrNull()
             ?.landmarks()
             ?.firstOrNull()
@@ -453,11 +488,13 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             null
         }
 
-        return SquatUiState(framing, analysis)
+        return SquatUiState(generation,framing, analysis)
 
     }
     private fun updateSquatUi(uiState: SquatUiState) {
         val binding = _fragmentCameraBinding ?: return
+
+        if(uiState.generation!= sessionGeneration) return
 
         updateFramingChecklist(uiState.framing)
 
@@ -467,6 +504,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             binding.squatStatusText.text = getString(R.string.squat_get_into_position)
             return
         }
+        sessionRecorder.start(System.currentTimeMillis())
+        sessionRecorder.record(state)
 
         errorFeedbackTracker.newErrors(state).forEach { error -> voiceFeedback?.speak(voiceCue(error)) }
 
@@ -483,14 +522,14 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             binding.lastRepText.text = if (rep.isCorrect) {
                 getString(
                     R.string.squat_last_rep_ok,
-                    rep.repNumberval,
+                    rep.repNumber,
                     rep.minKneeAngleDeg,
                     rep.maxTrunkLeanVelocityDegPerSec
                 )
             } else {
                 getString(
                     R.string.squat_last_rep_errors,
-                    rep.repNumberval,
+                    rep.repNumber,
                     rep.minKneeAngleDeg,
                     rep.maxTrunkLeanVelocityDegPerSec,
                     rep.errors.joinToString(", ") { errorLabel(it) }
@@ -501,6 +540,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     private fun updateFramingChecklist(framing: FramingStatus) {
         val binding = _fragmentCameraBinding ?: return
+
+        binding.finishSetButton.isVisible = framing.isReady
 
         if (framing.isReady) {
             binding.framingChecklist.visibility = View.GONE
@@ -548,7 +589,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         when (error) {
             SquatErrorType.INSUFFICIENT_DEPTH -> R.string.squat_error_insufficient_depth
             SquatErrorType.KNEE_VALGUS -> R.string.squat_error_knee_valgus
-            SquatErrorType.EXCESSIVE_BACK_ROUNDING -> R.string.squat_error_insufficient_depth
+            SquatErrorType.EXCESSIVE_BACK_ROUNDING -> R.string.squat_error_back_rounding
         }
 
     )
@@ -562,9 +603,6 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     )
 
 
-
-
-
     override fun onError(error: String, errorCode: Int) {
         activity?.runOnUiThread {
             Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
@@ -572,6 +610,59 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                 fragmentCameraBinding.bottomSheetLayout.spinnerDelegate.setSelection(
                     PoseLandmarkerHelper.DELEGATE_CPU, false
                 )
+            }
+        }
+    }
+
+    /** Ends the current set, saves it, shows its summary and starts a new one. */
+    private fun finishSet() {
+        val summary = sessionRecorder.finish(System.currentTimeMillis())
+        startNewSet()
+
+        if (summary != null) {
+            if (summary.totalReps > 0) {
+                saveSession(summary)
+            }
+            showSetSummary(summary)
+        }
+    }
+
+    /** Makes the analysis start a new set (from the next analyzed frame). */
+    private fun startNewSet() {
+        sessionGeneration++
+        errorFeedbackTracker.reset()
+        _fragmentCameraBinding?.lastRepText?.text = ""
+    }
+
+
+
+
+    private fun showSetSummary(summary: SessionSummary){
+        val duration = formatDuration(summary.durationMs)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.set_summary_title)
+            .setMessage(
+                getString(
+                    R.string.set_summary_message,
+                    summary.totalReps,
+                    summary.correctReps,
+                    summary.errorCount(SquatErrorType.INSUFFICIENT_DEPTH),
+                    summary.errorCount(SquatErrorType.KNEE_VALGUS),
+                    summary.errorCount(SquatErrorType.EXCESSIVE_BACK_ROUNDING),
+                    duration
+                )
+            )
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun saveSession(summary: SessionSummary) {
+        lifecycleScope.launch {
+            try {
+                trainingRepository.saveSession(summary)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save the set", e)
             }
         }
     }

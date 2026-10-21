@@ -19,8 +19,6 @@ package com.formanalyzer.app
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.activity.viewModels
-import androidx.navigation.fragment.NavHostFragment
-import androidx.navigation.ui.setupWithNavController
 import com.formanalyzer.app.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -34,7 +32,4 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    override fun onBackPressed() {
-        finish()
-    }
 }
