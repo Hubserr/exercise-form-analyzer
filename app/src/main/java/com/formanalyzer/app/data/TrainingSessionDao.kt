@@ -20,4 +20,13 @@ interface TrainingSessionDao{
     @Query("SELECT * FROM training_sessions ORDER BY startedAtMs DESC")
     fun observeSessionsWithReps(): Flow<List<SessionWithReps>>
 
+    @Query("DELETE FROM reps")
+    suspend fun deleteAllReps()
+
+    @Query("DELETE FROM training_sessions")
+    suspend fun deleteAllSessions()
+    @Transaction
+    @Query("SELECT * FROM training_sessions WHERE id = :id")
+    suspend fun getSessionWithReps(id: Long): SessionWithReps?
+
 }

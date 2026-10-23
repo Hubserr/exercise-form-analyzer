@@ -32,6 +32,9 @@ class HomeFragment : Fragment() {
         binding.openHistoryButton.setOnClickListener {
             findNavController().navigate(R.id.action_home_to_history)
         }
+        binding.openSettingsButton.setOnClickListener {
+            findNavController().navigate(R.id.action_home_to_settings)
+        }
     }
 
     override fun onDestroyView() {

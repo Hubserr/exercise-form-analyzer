@@ -11,10 +11,13 @@ import com.formanalyzer.app.databinding.ItemSessionHistoryBinding
 import com.formanalyzer.app.squat.SquatErrorType
 import java.text.DateFormat
 import java.util.Date
-
+import com.formanalyzer.app.squat.BodyProfile
+import com.formanalyzer.app.squat.CalorieEstimator
 /** Shows saved sets in the training history list. */
-class SessionHistoryAdapter :
-    ListAdapter<SavedSession, SessionHistoryAdapter.ViewHolder>(DIFF_CALLBACK) {
+class SessionHistoryAdapter(
+    private val profile: BodyProfile
+) : ListAdapter<SavedSession, SessionHistoryAdapter.ViewHolder>(DIFF_CALLBACK) {
+
 
     class ViewHolder(val binding: ItemSessionHistoryBinding) :
         RecyclerView.ViewHolder(binding.root)
@@ -29,15 +32,16 @@ class SessionHistoryAdapter :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val summary = getItem(position).summary
         val context = holder.itemView.context
+        val calories = CalorieEstimator.estimate(summary, profile).kcal
 
-        holder.binding.sessionDateText.text = DateFormat
-            .getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-            .format(Date(summary.startedAtMs))
+        holder.binding.sessionDateText.text = formatDateTime(summary.startedAtMs)
+
         holder.binding.sessionRepsText.text = context.getString(
             R.string.history_reps,
             summary.totalReps,
             summary.correctReps,
-            formatDuration(summary.durationMs)
+            formatDuration(summary.durationMs),
+            calories
         )
         holder.binding.sessionErrorsText.text = context.getString(
             R.string.history_errors,

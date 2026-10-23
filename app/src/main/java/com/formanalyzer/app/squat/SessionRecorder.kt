@@ -20,6 +20,9 @@ class SessionRecorder{
     val isStarted: Boolean
         get() = startedAtMs != null
 
+    val repCount: Int
+        get() = reps.size
+
     /** Starts the set*/
     fun start(nowMs: Long){
         if (startedAtMs==null){

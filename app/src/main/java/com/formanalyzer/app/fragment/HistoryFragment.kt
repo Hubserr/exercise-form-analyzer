@@ -15,6 +15,7 @@ import com.formanalyzer.app.data.AppDatabase
 import com.formanalyzer.app.data.TrainingSessionRepository
 import com.formanalyzer.app.databinding.FragmentHistoryBinding
 import kotlinx.coroutines.launch
+import com.formanalyzer.app.data.UserSettingsRepository
 
 /** List of saved sets, newest first. */
 class HistoryFragment : Fragment() {
@@ -25,7 +26,9 @@ class HistoryFragment : Fragment() {
     private val repository by lazy {
         TrainingSessionRepository(AppDatabase.getInstance(requireContext()))
     }
-    private val adapter = SessionHistoryAdapter()
+    private val adapter by lazy {
+        SessionHistoryAdapter(UserSettingsRepository(requireContext()).loadProfile())
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,

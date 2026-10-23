@@ -91,7 +91,49 @@
     <!-- History -->
     <string name="history">History</string>
     <string name="history_empty">No saved sets yet</string>
-    <string name="history_reps">Reps: %1$d (correct: %2$d) · %3$s</string>
+    <string name="history_reps">Reps: %1$d (correct: %2$d) · %3$s · ~%4$.0f kcal</string>
     <string name="history_errors">Too shallow: %1$d · Knees caving in: %2$d · Back rounding: %3$d</string>
     <string name="home_start_squat">Squat</string>
+
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="settings_profile">Body profile</string>
+    <string name="settings_profile_hint">Optional. Fill in all fields for a personal calorie estimate, or leave all empty for a general one.</string>
+    <string name="settings_profile_incomplete">Fill in all profile fields or leave all of them empty</string>
+    <string name="settings_weight">Weight (kg)</string>
+    <string name="settings_height">Height (cm)</string>
+    <string name="settings_age">Age (years)</string>
+    <string name="settings_sex_male">Male</string>
+    <string name="settings_sex_female">Female</string>
+    <string name="settings_sex_unset">Not specified</string>
+    <string name="settings_save">Save profile</string>
+    <string name="settings_saved">Profile saved</string>
+    <string name="settings_invalid_value">Enter a realistic value or leave empty</string>
+    <string name="settings_app">App</string>
+    <string name="settings_voice">Voice feedback</string>
+    <string name="settings_clear_history">Clear training history</string>
+    <string name="settings_clear_history_confirm">All saved sets will be deleted. This cannot be undone.</string>
+    <string name="settings_clear">Delete</string>
+    <string name="settings_history_cleared">History cleared</string>
+
+    <!-- Set summary screen -->
+    <string name="summary_reps">Reps: %1$d</string>
+    <string name="summary_correct">Correct: %1$d</string>
+    <string name="summary_too_shallow">Too shallow: %1$d</string>
+    <string name="summary_knee_valgus">Knees caving in: %1$d</string>
+    <string name="summary_back_rounding">Back rounding: %1$d</string>
+    <string name="summary_duration">Duration: %1$s</string>
+    <string name="summary_calories">Calories: ~%1$.0f kcal</string>
+    <string name="summary_calories_personal">Personal estimate based on your body profile.</string>
+    <string name="summary_calories_general">General estimate. Fill in your body profile in Settings for a personal one.</string>
+    <string name="summary_next_set">Next set</string>
+    <string name="summary_finish">Finish training</string>
+    <string name="set_no_reps">No repetitions in this set</string>
+    <string name="set_save_failed">Could not save the set</string>
+    <string name="leave_set_title">Finish this set?</string>
+    <string name="leave_set_message">Reps in this set: %1$d. Save it before leaving?</string>
+    <string name="leave_set_save">Save</string>
+    <string name="leave_set_discard">Discard</string>
+
+
 </resources>

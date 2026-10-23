@@ -14,11 +14,16 @@
     ~ See the License for the specific language governing permissions and
     ~ limitations under the License.
 -->
+
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/nav_graph"
     app:startDestination="@id/home_fragment">
 
+    <fragment
+        android:id="@+id/settings_fragment"
+        android:name="com.formanalyzer.app.fragment.SettingsFragment"
+        android:label="SettingsFragment" />
     <fragment
         android:id="@+id/home_fragment"
         android:name="com.formanalyzer.app.fragment.HomeFragment"
@@ -31,6 +36,9 @@
         <action
             android:id="@+id/action_home_to_history"
             app:destination="@id/history_fragment" />
+        <action
+            android:id="@+id/action_home_to_settings"
+            app:destination="@id/settings_fragment" />
     </fragment>
 
 
@@ -59,12 +67,28 @@
             app:popUpTo="@id/camera_fragment"
             app:popUpToInclusive="true" />
 
+        <action
+            android:id="@+id/action_camera_to_summary"
+            app:destination="@id/session_summary_fragment" />
+
+    </fragment>
+
+    <fragment
+        android:id="@+id/session_summary_fragment"
+        android:name="com.formanalyzer.app.fragment.SessionSummaryFragment"
+        android:label="SessionSummaryFragment">
+
+        <argument
+            android:name="sessionId"
+            app:argType="long" />
     </fragment>
 
     <fragment
         android:id="@+id/history_fragment"
         android:name="com.formanalyzer.app.fragment.HistoryFragment"
         android:label="HistoryFragment" />
+
+
 
 
 

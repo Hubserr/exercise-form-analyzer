@@ -16,9 +16,17 @@ class TrainingSessionRepository(private val database: AppDatabase) {
             sessionId
         }
 
-    /** Saved sets, newest first; emits a new list whenever the history changes. */
+    /** A single saved set */
+    suspend fun getSession(id: Long): SavedSession? =
+        dao.getSessionWithReps(id)?.toSavedSession()
+
+    /** Saved sets, newest first;  new list whenever the history changes. */
     fun observeHistory(): Flow<List<SavedSession>> =
         dao.observeSessionsWithReps().map { sessions -> sessions.map { it.toSavedSession() } }
 
-
+    /** Removes all saved sets and their repetitions. */
+    suspend fun clearHistory() = database.withTransaction {
+        dao.deleteAllReps()
+        dao.deleteAllSessions()
+    }
 }

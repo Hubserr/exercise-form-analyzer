@@ -85,4 +85,16 @@ class SessionRecorderTest {
         recorder.start(nowMs = 2000)
         assertTrue(recorder.finish(nowMs = 3000)!!.reps.isEmpty())
     }
+
+    @Test
+    fun `rep count grows during the set and resets after finish`() {
+        val recorder = SessionRecorder()
+        recorder.start(nowMs = 0)
+        recorder.record(state(rep(1)))
+        recorder.record(state(rep(2)))
+        assertEquals(2, recorder.repCount)
+
+        recorder.finish(nowMs = 1_000)
+        assertEquals(0, recorder.repCount)
+    }
 }

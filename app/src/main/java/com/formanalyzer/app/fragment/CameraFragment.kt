@@ -44,6 +44,7 @@ import com.formanalyzer.app.PoseLandmarkerHelper
 import com.formanalyzer.app.R
 import com.formanalyzer.app.data.AppDatabase
 import com.formanalyzer.app.data.TrainingSessionRepository
+import com.formanalyzer.app.data.UserSettingsRepository
 import com.formanalyzer.app.databinding.FragmentCameraBinding
 import com.formanalyzer.app.debug.JitterLogger
 import com.formanalyzer.app.squat.BodyPart
@@ -65,6 +66,9 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import androidx.activity.addCallback
+import androidx.core.os.bundleOf
+import androidx.navigation.fragment.findNavController
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
@@ -108,6 +112,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private val trainingRepository by lazy {
         TrainingSessionRepository(AppDatabase.getInstance(requireContext()))
     }
+
+    private val userSettings by lazy { UserSettingsRepository(requireContext()) }
 
     private val framingChecker = FramingChecker()
     private val jitterLogger = if(ENABLE_JITTER_LOG) JitterLogger() else null
@@ -179,10 +185,23 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         voiceFeedback = VoiceFeedbackManager(requireContext())
 
+        voiceFeedback?.enabled = userSettings.voiceFeedbackEnabled
+
         sessionRecorder.finish(System.currentTimeMillis())
         startNewSet()
 
         fragmentCameraBinding.finishSetButton.setOnClickListener { finishSet() }
+
+        // Leaving the camera in the middle of a set asks whether to save it.
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) {
+            if (sessionRecorder.repCount > 0) {
+                confirmLeavingSet()
+            } else {
+                findNavController().popBackStack()
+            }
+        }
+
+
         // Initialize our background executor
         backgroundExecutor = Executors.newSingleThreadExecutor()
 
@@ -207,6 +226,15 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
         // Attach listeners to UI control widgets
         initBottomSheetControls()
+    }
+    private fun confirmLeavingSet() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.leave_set_title)
+            .setMessage(getString(R.string.leave_set_message, sessionRecorder.repCount))
+            .setPositiveButton(R.string.leave_set_save) { _, _ -> finishSet() }
+            .setNegativeButton(R.string.leave_set_discard) { _, _ -> findNavController().popBackStack() }
+            .setNeutralButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun initBottomSheetControls() {
@@ -615,15 +643,31 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     }
 
     /** Ends the current set, saves it, shows its summary and starts a new one. */
+    /** Ends the current set; if it has repetitions, saves it and opens its summary. */
     private fun finishSet() {
         val summary = sessionRecorder.finish(System.currentTimeMillis())
         startNewSet()
 
-        if (summary != null) {
-            if (summary.totalReps > 0) {
-                saveSession(summary)
+        if (summary == null || summary.totalReps == 0) {
+            Toast.makeText(requireContext(), R.string.set_no_reps, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                val sessionId = trainingRepository.saveSession(summary)
+                val navController = findNavController()
+                // The user may have left the camera screen while the set was being saved.
+                if (navController.currentDestination?.id == R.id.camera_fragment) {
+                    navController.navigate(
+                        R.id.action_camera_to_summary,
+                        bundleOf(SessionSummaryFragment.ARG_SESSION_ID to sessionId)
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save the set", e)
+                Toast.makeText(requireContext(), R.string.set_save_failed, Toast.LENGTH_SHORT).show()
             }
-            showSetSummary(summary)
         }
     }
 
@@ -634,36 +678,4 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
         _fragmentCameraBinding?.lastRepText?.text = ""
     }
 
-
-
-
-    private fun showSetSummary(summary: SessionSummary){
-        val duration = formatDuration(summary.durationMs)
-
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.set_summary_title)
-            .setMessage(
-                getString(
-                    R.string.set_summary_message,
-                    summary.totalReps,
-                    summary.correctReps,
-                    summary.errorCount(SquatErrorType.INSUFFICIENT_DEPTH),
-                    summary.errorCount(SquatErrorType.KNEE_VALGUS),
-                    summary.errorCount(SquatErrorType.EXCESSIVE_BACK_ROUNDING),
-                    duration
-                )
-            )
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-    }
-
-    private fun saveSession(summary: SessionSummary) {
-        lifecycleScope.launch {
-            try {
-                trainingRepository.saveSession(summary)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to save the set", e)
-            }
-        }
-    }
 }

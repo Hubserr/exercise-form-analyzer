@@ -28,4 +28,12 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="@string/history" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/open_settings_button"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/settings" />
 </LinearLayout>
