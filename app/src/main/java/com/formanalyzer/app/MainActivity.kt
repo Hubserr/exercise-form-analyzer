@@ -19,6 +19,9 @@ package com.formanalyzer.app
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.activity.viewModels
+import androidx.core.view.isVisible
+import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.ui.setupWithNavController
 import com.formanalyzer.app.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -30,6 +33,20 @@ class MainActivity : AppCompatActivity() {
         activityMainBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(activityMainBinding.root)
 
+        val navHostFragment =
+            supportFragmentManager.findFragmentById(R.id.fragment_container) as NavHostFragment
+        val navController = navHostFragment.navController
+        activityMainBinding.navigation.setupWithNavController(navController)
+
+        // The bottom bar is shown only on the three main screens, not during a set.
+        navController.addOnDestinationChangedListener { _, destination, _ ->
+            activityMainBinding.bottomBar.isVisible = destination.id in TOP_LEVEL_DESTINATIONS
+        }
     }
 
+    private companion object {
+        val TOP_LEVEL_DESTINATIONS = setOf(
+            R.id.home_fragment, R.id.history_fragment, R.id.settings_fragment
+        )
+    }
 }

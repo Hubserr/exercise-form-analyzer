@@ -11,8 +11,10 @@ import kotlin.math.sin
 
 class SquatAnalyzerTest {
 
-    // Smoothing disabled (alpha = 1), each fame shows exactly the given angle
-    private val config = SquatAnalyzerConfig(smoothingAlpha = 1.0)
+    // Smoothing disabled (alpha = 1), each fame shows exactly the given angle.
+    // Synthetic frames are only 33 ms apart, so the minimum interval between reps is switched off
+    // here and tested separately below.
+    private val config = SquatAnalyzerConfig(smoothingAlpha = 1.0, minRepIntervalMs = 0L)
 
     private val frameMs =33L
     private var clockMs = 0L
@@ -303,4 +305,131 @@ class SquatAnalyzerTest {
         assertEquals(10.0 / 33.0 * 1000.0, states.last().lastCompletedRep!!.maxTrunkLeanVelocityDegPerSec, 1e-6)
     }
 
+    @Test
+    fun `sudden trunk drop above the knee angle limit is not reported`() {
+        // 2 -> 12 deg in one frame while the knee is at 110 deg (above the 90 deg limit).
+        val leans = doubleArrayOf(0.0, 2.0, 12.0, 12.0, 12.0, 10.0, 6.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val states = analyzer.feedWithLean(repKneeAngles, leans)
+
+        assertTrue(states.last().lastCompletedRep!!.isCorrect)
+    }
+
+    // ---- Valgus reference and leg choice ----
+
+    /** Inward knee shift that gives the requested hip-knee-ankle angle in [frontPoseLegs] */
+    private fun shiftFor(angleDeg: Double): Double = 0.2 * kotlin.math.tan(Math.toRadians((180.0 - angleDeg) / 2.0))
+
+    /** Front pose with separate inward shift and visibility for each leg (negative shift = knee outwards) */
+    private fun frontPoseLegs(
+        leftShift: Double, rightShift: Double,
+        leftVisibility: Double = 0.9, rightVisibility: Double = 0.9
+    ): List<PoseLandmarkPoint> {
+        val points = MutableList(33) { PoseLandmarkPoint(0.5, 0.5, visibility = 0.9) }
+        points[PoseLandmarkIndex.LEFT_SHOULDER] = PoseLandmarkPoint(0.55, 0.2, visibility = leftVisibility)
+        points[PoseLandmarkIndex.RIGHT_SHOULDER] = PoseLandmarkPoint(0.45, 0.2, visibility = rightVisibility)
+        points[PoseLandmarkIndex.LEFT_HIP] = PoseLandmarkPoint(0.55, 0.5, visibility = leftVisibility)
+        points[PoseLandmarkIndex.RIGHT_HIP] = PoseLandmarkPoint(0.45, 0.5, visibility = rightVisibility)
+        points[PoseLandmarkIndex.LEFT_KNEE] = PoseLandmarkPoint(0.55 - leftShift, 0.7, visibility = leftVisibility)
+        points[PoseLandmarkIndex.RIGHT_KNEE] = PoseLandmarkPoint(0.45 + rightShift, 0.7, visibility = rightVisibility)
+        points[PoseLandmarkIndex.LEFT_ANKLE] = PoseLandmarkPoint(0.55, 0.9, visibility = leftVisibility)
+        points[PoseLandmarkIndex.RIGHT_ANKLE] = PoseLandmarkPoint(0.45, 0.9, visibility = rightVisibility)
+        return points
+    }
+
+    @Test
+    fun `valgus reference comes from the upright frame, not from the last frame before descent`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        // 175 deg (upright) -> 151 deg (still standing, below 160) -> 145 deg (descent starts)
+        // -> 140 deg (measured in the descent) -> back up
+        val states = listOf(175.0, 151.0, 145.0, 140.0, 180.0).map {
+            analyzer.step(frontPoseLegs(shiftFor(it), shiftFor(it)))
+        }
+
+        val rep = states.last().lastCompletedRep!!
+        // Old behaviour: reference 151 deg -> deviation 11 deg. Now: reference 175 deg -> 35 deg.
+        assertEquals(35.0, rep.maxKneeValgusDeviationDeg, 0.1)
+        assertTrue(SquatErrorType.KNEE_VALGUS in rep.errors)
+    }
+
+    @Test
+    fun `leg chosen at the start of the descent is kept until the rep ends`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        val states = listOf(
+            // standing, left leg better visible
+            frontPoseLegs(0.0, 0.0, leftVisibility = 0.9, rightVisibility = 0.8),
+            // descent starts on the left leg (140 deg)
+            frontPoseLegs(shiftFor(140.0), 0.0, leftVisibility = 0.9, rightVisibility = 0.8),
+            // right leg becomes better visible: left 130 deg inwards, right 120 deg outwards
+            frontPoseLegs(shiftFor(130.0), -shiftFor(120.0), leftVisibility = 0.9, rightVisibility = 0.95),
+            frontPoseLegs(shiftFor(130.0), -shiftFor(120.0), leftVisibility = 0.9, rightVisibility = 0.95),
+            frontPoseLegs(0.0, 0.0, leftVisibility = 0.9, rightVisibility = 0.95)
+        ).map { analyzer.step(it) }
+
+        val rep = states.last().lastCompletedRep!!
+        // Without the lock the right leg (120 deg, knee outwards) would be measured in frames 3-4.
+        assertEquals(130.0, rep.minKneeAngleDeg, 0.1)
+        assertTrue(SquatErrorType.KNEE_VALGUS in rep.errors)
+    }
+
+    @Test
+    fun `frame is skipped when the chosen leg is not visible during the rep`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        analyzer.step(frontPoseLegs(0.0, 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        analyzer.step(frontPoseLegs(shiftFor(140.0), 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        val state = analyzer.step(frontPoseLegs(shiftFor(130.0), 0.0, leftVisibility = 0.1, rightVisibility = 0.95))
+
+        assertFalse(state.personDetected)
+        assertEquals(SquatPhase.DESCENDING, state.phase)
+    }
+
+    // ---- Minimum interval between reps ----
+
+    @Test
+    fun `rep ending too soon after the previous one is not counted`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config.copy(minRepIntervalMs = 1000L))
+        analyzer.feed(170.0, 140.0, 85.0, 80.0, 90.0, 165.0)
+        // second "rep" ends about 165 ms later
+        val states = analyzer.feed(140.0, 85.0, 80.0, 90.0, 165.0)
+
+        assertEquals(1, states.last().repCount)
+        assertNull(states.last().lastCompletedRep)
+        assertNotNull(states.last().suppressedRep)
+        assertEquals(SquatPhase.STANDING, states.last().phase)
+    }
+
+    @Test
+    fun `rep after the minimum interval is counted`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config.copy(minRepIntervalMs = 1000L))
+        analyzer.feed(170.0, 140.0, 85.0, 80.0, 90.0, 165.0)
+        analyzer.feed(*DoubleArray(30) { 170.0 })   // about 1 s of standing
+        val states = analyzer.feed(140.0, 85.0, 80.0, 90.0, 165.0)
+
+        assertEquals(2, states.last().repCount)
+        assertEquals(2, states.last().lastCompletedRep!!.repNumber)
+    }
+
+    // ---- Diagnostics ----
+
+    @Test
+    fun `full-rep trunk velocity is reported without the knee angle limit`() {
+        // 2 -> 12 deg in one frame while the knee is at 110 deg (above the 90 deg limit).
+        val leans = doubleArrayOf(0.0, 2.0, 12.0, 12.0, 12.0, 10.0, 6.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        val rep = analyzer.feedWithLean(repKneeAngles, leans).last().lastCompletedRep!!
+
+        assertEquals(10.0 / 33.0 * 1000.0, rep.maxTrunkLeanVelocityFullRepDegPerSec, 1e-6)
+        assertTrue(rep.maxTrunkLeanVelocityDegPerSec < 100.0)
+        assertTrue(rep.isCorrect)
+    }
+    @Test
+    fun `back rounding in one rep is not carried over to the next`() {
+        val jerk = doubleArrayOf(0.0, 2.0, 4.0, 14.0, 14.0, 10.0, 6.0, 2.0, 0.0)
+        val clean = doubleArrayOf(0.0, 2.0, 4.0, 6.0, 8.0, 6.0, 4.0, 2.0, 0.0)
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        analyzer.feedWithLean(repKneeAngles, jerk)
+        val second = analyzer.feedWithLean(repKneeAngles, clean).last().lastCompletedRep!!
+
+        assertTrue(second.isCorrect)
+    }
 }

@@ -66,7 +66,15 @@ class ErrorFeedbackTrackerTest{
         assertEquals(setOf(back),tracker.newErrors(state(back, repCompleted = true)))
 
     }
+    @Test
+    fun `rep ignored by the minimum interval also starts a new rep for announcements`(){
+        val tracker = ErrorFeedbackTracker()
+        val back = SquatErrorType.EXCESSIVE_BACK_ROUNDING
+        tracker.newErrors(state(back))
+        tracker.newErrors(state(back).copy(suppressedRep = RepAnalysis(2, 80.0, 0.0, setOf(back))))
 
+        assertEquals(setOf(back), tracker.newErrors(state(back)))
+    }
 
 
 }

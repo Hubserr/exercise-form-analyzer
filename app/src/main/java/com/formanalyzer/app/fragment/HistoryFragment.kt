@@ -9,7 +9,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.formanalyzer.app.data.AppDatabase
 import com.formanalyzer.app.data.TrainingSessionRepository
@@ -43,9 +42,7 @@ class HistoryFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.historyList.layoutManager = LinearLayoutManager(requireContext())
-        binding.historyList.addItemDecoration(
-            DividerItemDecoration(requireContext(), DividerItemDecoration.VERTICAL)
-        )
+
         binding.historyList.adapter = adapter
 
         // Collect the history only while the screen is visible.

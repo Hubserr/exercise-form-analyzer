@@ -11,7 +11,7 @@ class ErrorFeedbackTracker{
     fun newErrors(state: SquatAnalysisState): Set<SquatErrorType>{
         val fresh = state.activeErrors - announcedInRep
         announcedInRep += fresh
-        if(state.lastCompletedRep!=null){
+        if(state.lastCompletedRep!=null || state.suppressedRep!=null){
             announcedInRep.clear()
         }
         return fresh

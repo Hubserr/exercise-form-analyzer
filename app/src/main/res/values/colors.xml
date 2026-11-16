@@ -29,6 +29,20 @@
     <color name="icFocused">#DDFFFFFF</color>
     <color name="icPressed">#AAFFFFFF</color>
 
-    <color name="framing_ok">#66BB6A</color>
-    <color name="framing_missing">#EF5350</color>
+    <!-- App palette -->
+    <color name="brand">#0E7C66</color>
+    <color name="brand_dark">#0A5C4C</color>
+    <color name="brand_light">#E3F2EE</color>
+    <color name="ground">#F5F6F8</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text_primary">#14181F</color>
+    <color name="text_secondary">#5B6472</color>
+    <color name="border">#E2E5EA</color>
+    <color name="border_strong">#C9CED6</color>
+    <color name="warning">#B54708</color>
+    <color name="warning_dark">#8A3A07</color>
+    <color name="overlay">#99000000</color>
+
+    <color name="framing_ok">#6EE7B7</color>
+    <color name="framing_missing">#FDBA74</color>
 </resources>

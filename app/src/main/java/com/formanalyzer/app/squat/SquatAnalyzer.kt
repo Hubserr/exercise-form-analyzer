@@ -7,7 +7,7 @@ class SquatAnalyzer(
 ){
 
     private data class BodySide(val shoulder: Int, val hip: Int, val knee: Int, val ankle: Int)
-
+    private data class KneeBaseline(val kneeAngleDeg: Double, val kneeOffsetRatio: Double)
     private val leftSide = BodySide(
         PoseLandmarkIndex.LEFT_SHOULDER, PoseLandmarkIndex.LEFT_HIP,
         PoseLandmarkIndex.LEFT_KNEE, PoseLandmarkIndex.LEFT_ANKLE
@@ -25,8 +25,14 @@ class SquatAnalyzer(
     private var pendingViewMode: SquatViewMode ?= null
     private var pendingViewFrames =0
 
-    private var standingKneeAngleBaseline = 180.0
-    private var standingKneeOffsetRatioBaseline = 0.0
+    /** Standing reference for each leg, updated only in upright frames (knee >= standingKneeAngleDeg) */
+    private val standingBaselines = mutableMapOf<BodySide, KneeBaseline>()
+
+    /** Leg chosen when the descent starts, kept until the rep ends */
+    private var repSide: BodySide? = null
+
+    /** Timestamp of the last counted rep, used for the minimum interval between reps */
+    private var lastCountedRepTimestampMs: Long? = null
 
     private var previousTrunkLean: Double? = null
     private var previousTrunkLeanTimestampMs: Long? = null
@@ -35,6 +41,7 @@ class SquatAnalyzer(
     private var maxKneeValgusDeviationDegInRep = 0.0
 
     private var maxTrunkLeanVelocityInRep = 0.0
+    private var maxTrunkLeanVelocityFullRepInRep = 0.0
     private var errorsInRep = mutableSetOf<SquatErrorType>()
 
 
@@ -43,8 +50,9 @@ class SquatAnalyzer(
         smoother.reset()
         phase = SquatPhase.STANDING
         repCount =0
-        standingKneeAngleBaseline =180.0
-        standingKneeOffsetRatioBaseline =0.0
+        standingBaselines.clear()
+        repSide = null
+        lastCountedRepTimestampMs = null
         previousTrunkLean = null
         previousTrunkLeanTimestampMs = null
         detectedViewMode = SquatViewMode.SIDE
@@ -58,6 +66,7 @@ class SquatAnalyzer(
         minKneeAngleInRep = Double.MAX_VALUE
         maxKneeValgusDeviationDegInRep =0.0
         maxTrunkLeanVelocityInRep =0.0
+        maxTrunkLeanVelocityFullRepInRep =0.0
         errorsInRep.clear()
     }
 
@@ -66,7 +75,7 @@ class SquatAnalyzer(
         timestampMs: Long,
         aspectRatio: Double =1.0
     ): SquatAnalysisState {
-        val side = selectReliableSide(rawLandmarks)
+        val side = sideForFrame(rawLandmarks)
         if(side==null){
             smoother.reset()
             previousTrunkLean =null
@@ -77,7 +86,7 @@ class SquatAnalyzer(
         val hip1 = landmarks[side.hip]
         val knee = landmarks[side.knee]
         val ankle = landmarks[side.ankle]
-        val hip2 = landmarks[if(side==leftSide) rightSide.hip else leftSide.hip]
+        val hip2 = landmarks[otherSide(side).hip]
 
         val kneeAngle = JointAngleCalculator.angleAt(
             landmarks[side.hip], landmarks[side.knee], landmarks[side.ankle], aspectRatio
@@ -102,21 +111,22 @@ class SquatAnalyzer(
 
 
 
-        if(phase!= SquatPhase.STANDING){
-            maxTrunkLeanVelocityInRep =maxOf( maxTrunkLeanVelocityInRep,trunkLeanVelocity)
-            if(mode== SquatViewMode.SIDE&&maxTrunkLeanVelocityInRep>config.backRoundingVelocityDegPerSec){
-                activeErrors+= SquatErrorType.EXCESSIVE_BACK_ROUNDING
+        if(phase != SquatPhase.STANDING){
+            maxTrunkLeanVelocityFullRepInRep = maxOf(maxTrunkLeanVelocityFullRepInRep, trunkLeanVelocity)
+            if(kneeAngle < config.backRoundingMaxKneeAngleDeg){
+                maxTrunkLeanVelocityInRep = maxOf(maxTrunkLeanVelocityInRep, trunkLeanVelocity)
             }
-
+            if(mode == SquatViewMode.SIDE && maxTrunkLeanVelocityInRep > config.backRoundingVelocityDegPerSec){
+                activeErrors += SquatErrorType.EXCESSIVE_BACK_ROUNDING
+            }
         }
 
         when(phase ){
             SquatPhase.STANDING -> {
-                if( kneeAngle >= config.descendingEntryKneeAngleDeg){
-                    standingKneeAngleBaseline = kneeAngle
-                    standingKneeOffsetRatioBaseline = kneeOffsetRatio
-                } else{
+                updateStandingBaselines(landmarks, aspectRatio)
+                if( kneeAngle < config.descendingEntryKneeAngleDeg){
                     phase = SquatPhase.DESCENDING
+                    repSide = side
                     minKneeAngleInRep = kneeAngle
                 }
             }
@@ -124,7 +134,7 @@ class SquatAnalyzer(
             SquatPhase.DESCENDING->{
             minKneeAngleInRep = minOf(minKneeAngleInRep,kneeAngle)
                 if(mode== SquatViewMode.FRONT){
-                    trackKneeValgus(kneeAngle, kneeOffsetRatio)
+                    trackKneeValgus(side, kneeAngle, kneeOffsetRatio)
                 }
                 if(kneeAngle>minKneeAngleInRep+config.bottomHysteresisDeg){
                     phase = SquatPhase.ASCENDING
@@ -140,16 +150,28 @@ class SquatAnalyzer(
         errorsInRep +=activeErrors
 
         var completedRep: RepAnalysis ?=null
+        var suppressedRep: RepAnalysis ?=null
 
         if(phase== SquatPhase.ASCENDING&&kneeAngle>=config.standingKneeAngleDeg) {
-            repCount++
-            completedRep = RepAnalysis(
-                repNumber = repCount,
+            val rep = RepAnalysis(
+                repNumber = repCount + 1,
                 minKneeAngleDeg = minKneeAngleInRep,
                 maxTrunkLeanVelocityDegPerSec = maxTrunkLeanVelocityInRep,
-                errors = errorsInRep.toSet()
+                errors = errorsInRep.toSet(),
+                maxKneeValgusDeviationDeg = maxKneeValgusDeviationDegInRep,
+                maxTrunkLeanVelocityFullRepDegPerSec = maxTrunkLeanVelocityFullRepInRep
             )
+            val lastRepMs = lastCountedRepTimestampMs
+            if(lastRepMs != null && timestampMs - lastRepMs < config.minRepIntervalMs){
+                // Too soon after the previous rep - not counted and not saved
+                suppressedRep = rep
+            } else {
+                repCount++
+                lastCountedRepTimestampMs = timestampMs
+                completedRep = rep
+            }
             phase = SquatPhase.STANDING
+            repSide = null
             clearRepAccumulators()
         }
             return SquatAnalysisState(
@@ -159,7 +181,8 @@ class SquatAnalyzer(
                 currentKneeAngleDeg = kneeAngle,
                 activeErrors = activeErrors,
                 viewMode = mode,
-                lastCompletedRep = completedRep
+                lastCompletedRep = completedRep,
+                suppressedRep = suppressedRep
             )
 
     }
@@ -178,10 +201,27 @@ class SquatAnalyzer(
 
     }
 
-    private fun trackKneeValgus(kneeAngle: Double,kneeOffsetRatio: Double){
-        val movedMedially  = kneeOffsetRatio<standingKneeOffsetRatioBaseline
+    /** Stores the standing reference of every visible leg, but only when the leg is straight (knee >= standingKneeAngleDeg) */
+    private fun updateStandingBaselines(landmarks: List<PoseLandmarkPoint>, aspectRatio: Double){
+        for(side in listOf(leftSide, rightSide)){
+            if(visibilityOf(landmarks, side) < config.minVisibility) continue
+            val angle = JointAngleCalculator.angleAt(
+                landmarks[side.hip], landmarks[side.knee], landmarks[side.ankle], aspectRatio
+            ) ?: continue
+            if(angle >= config.standingKneeAngleDeg){
+                val offset = JointAngleCalculator.kneeCenterlineOffset(
+                    landmarks[side.knee], landmarks[side.hip], landmarks[otherSide(side).hip], aspectRatio
+                )
+                standingBaselines[side] = KneeBaseline(angle, offset)
+            }
+        }
+    }
+
+    private fun trackKneeValgus(side: BodySide, kneeAngle: Double,kneeOffsetRatio: Double){
+        val baseline = standingBaselines[side] ?: DEFAULT_BASELINE
+        val movedMedially  = kneeOffsetRatio<baseline.kneeOffsetRatio
         if(movedMedially){
-            val deviation = standingKneeAngleBaseline - kneeAngle
+            val deviation = baseline.kneeAngleDeg - kneeAngle
             maxKneeValgusDeviationDegInRep =maxOf(maxKneeValgusDeviationDegInRep,deviation)
         }
 
@@ -227,19 +267,30 @@ class SquatAnalyzer(
         if(viewMode == SquatViewMode.AUTO) detectedViewMode else viewMode
 
 
+    private fun otherSide(side: BodySide): BodySide = if(side == leftSide) rightSide else leftSide
+
+    private fun visibilityOf(landmarks: List<PoseLandmarkPoint>, side: BodySide) = minOf(
+        landmarks[side.shoulder].visibility,
+        landmarks[side.hip].visibility,
+        landmarks[side.knee].visibility,
+        landmarks[side.ankle].visibility
+    )
+
+    /** While standing the better visible leg is chosen in every frame. During a rep the leg chosen
+     * at the start of the descent is kept; if it is not visible enough, the frame is skipped. */
+    private fun sideForFrame(landmarks: List<PoseLandmarkPoint>): BodySide?{
+        val locked = repSide
+        if(phase == SquatPhase.STANDING || locked == null) return selectReliableSide(landmarks)
+        if(landmarks.size <= PoseLandmarkIndex.RIGHT_ANKLE) return null
+        return if(visibilityOf(landmarks, locked) >= config.minVisibility) locked else null
+    }
+
     private fun selectReliableSide(landmarks: List<PoseLandmarkPoint>): BodySide?{
 
         if(landmarks.size <= PoseLandmarkIndex.RIGHT_ANKLE) return null
 
-        fun visibilityOf(side: BodySide)= minOf(
-            landmarks[side.shoulder].visibility,
-            landmarks[side.hip].visibility,
-            landmarks[side.knee].visibility,
-            landmarks[side.ankle].visibility
-        )
-
-        val left = visibilityOf(leftSide)
-        val right = visibilityOf(rightSide)
+        val left = visibilityOf(landmarks, leftSide)
+        val right = visibilityOf(landmarks, rightSide)
         if(maxOf(left,right)<config.minVisibility) return null
         return if(left>=right) leftSide else rightSide
     }
@@ -256,6 +307,9 @@ class SquatAnalyzer(
     private companion object {
         /** Lower bound for hip width - in a side view both hips nearly overlap. */
         const val MIN_HIP_WIDTH = 0.01
+
+        /** Used when no upright frame of the leg was seen yet */
+        val DEFAULT_BASELINE = KneeBaseline(kneeAngleDeg = 180.0, kneeOffsetRatio = 0.0)
     }
 }
 

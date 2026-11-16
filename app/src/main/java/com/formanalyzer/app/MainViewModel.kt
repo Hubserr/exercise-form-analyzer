@@ -16,6 +16,7 @@
 package com.formanalyzer.app
 
 import androidx.lifecycle.ViewModel
+import com.formanalyzer.app.estimation.PoseLandmarkerHelper
 
 /**
  *  This ViewModel is used to store pose landmarker helper settings

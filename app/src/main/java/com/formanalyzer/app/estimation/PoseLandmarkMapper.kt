@@ -1,4 +1,4 @@
-package com.formanalyzer.app
+package com.formanalyzer.app.estimation
 
 import com.formanalyzer.app.squat.PoseLandmarkPoint
 import com.google.mediapipe.tasks.components.containers.NormalizedLandmark

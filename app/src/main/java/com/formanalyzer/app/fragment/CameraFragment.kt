@@ -40,7 +40,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.Navigation
 import com.formanalyzer.app.MainViewModel
-import com.formanalyzer.app.PoseLandmarkerHelper
+import com.formanalyzer.app.estimation.PoseLandmarkerHelper
 import com.formanalyzer.app.R
 import com.formanalyzer.app.data.AppDatabase
 import com.formanalyzer.app.data.TrainingSessionRepository
@@ -52,13 +52,12 @@ import com.formanalyzer.app.squat.ErrorFeedbackTracker
 import com.formanalyzer.app.squat.FramingChecker
 import com.formanalyzer.app.squat.FramingStatus
 import com.formanalyzer.app.squat.SessionRecorder
-import com.formanalyzer.app.squat.SessionSummary
 import com.formanalyzer.app.squat.SquatAnalysisState
 import com.formanalyzer.app.squat.SquatAnalyzer
 import com.formanalyzer.app.squat.SquatErrorType
 import com.formanalyzer.app.squat.SquatPhase
 import com.formanalyzer.app.squat.SquatViewMode
-import com.formanalyzer.app.toPoseLandmarkPoint
+import com.formanalyzer.app.estimation.toPoseLandmarkPoint
 import com.formanalyzer.app.voice.VoiceFeedbackManager
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import kotlinx.coroutines.launch
@@ -69,20 +68,28 @@ import java.util.concurrent.TimeUnit
 import androidx.activity.addCallback
 import androidx.core.os.bundleOf
 import androidx.navigation.fragment.findNavController
+import com.formanalyzer.app.squat.RepAnalysis
 
 class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     companion object {
         private const val TAG = "Pose Landmarker"
         private const val ENABLE_JITTER_LOG = false
+        private const val ENABLE_REP_LOG = true
+        private const val REP_LOG_TAG ="RepLog"
     }
 
     private data class SquatUiState(
         /** Set in which this frame was analyzed*/
         val generation: Int,
         val framing: FramingStatus,
-        val analysis: SquatAnalysisState?
+        val analysis: SquatAnalysisState?,
+        /** Diagnostics: frame processing times since the previous rep (set only when a rep ends) */
+        val procStats: ProcStats? = null
     )
+
+    /** Frame processing time (from frame arrival to MediaPipe result) collected over one rep */
+    private data class ProcStats(val frames: Int, val medianMs: Long, val maxMs: Long)
 
     private var _fragmentCameraBinding: FragmentCameraBinding? = null
 
@@ -116,6 +123,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
     private val userSettings by lazy { UserSettingsRepository(requireContext()) }
 
     private val framingChecker = FramingChecker()
+    /** Diagnostics: processing times of frames since the last rep, used only on the analysis thread */
+    private val procTimesMs = mutableListOf<Long>()
     private val jitterLogger = if(ENABLE_JITTER_LOG) JitterLogger() else null
 
     /** Blocking ML operations are performed using this executor */
@@ -494,6 +503,7 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             // and the framing check are never used from two threads at once
             squatAnalyzer.reset()
             framingChecker.reset()
+            procTimesMs.clear()
             analyzedGeneration = generation
         }
         val landmarks = resultBundle.results.firstOrNull()
@@ -516,8 +526,36 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             null
         }
 
-        return SquatUiState(generation,framing, analysis)
+        var procStats: ProcStats? = null
+        if (ENABLE_REP_LOG) {
+            procTimesMs += resultBundle.inferenceTime
+            if (analysis?.lastCompletedRep != null || analysis?.suppressedRep != null) {
+                val sorted = procTimesMs.sorted()
+                procStats = ProcStats(sorted.size, sorted[sorted.size / 2], sorted.last())
+                procTimesMs.clear()
+            }
+        }
 
+        return SquatUiState(generation,framing, analysis, procStats)
+
+    }
+
+    /** REP = counted rep, SKIP = rep ignored by the minimum interval between reps.
+     * Fields after the error list: max trunk velocity over the whole rep (without the knee angle
+     * limit), number of frames, median and max frame processing time [ms]. */
+    private fun logRep(prefix: String, rep: RepAnalysis, viewMode: SquatViewMode, proc: ProcStats?) {
+        Log.d(
+            REP_LOG_TAG,
+            String.format(
+                Locale.US, "%s,%d,%d,%s,%.2f,%.2f,%.2f,%s,%.2f,%d,%d,%d",
+                prefix, System.currentTimeMillis(), rep.repNumber, viewMode.name,
+                rep.minKneeAngleDeg, rep.maxTrunkLeanVelocityDegPerSec,
+                rep.maxKneeValgusDeviationDeg,
+                rep.errors.joinToString("|") { it.name },
+                rep.maxTrunkLeanVelocityFullRepDegPerSec,
+                proc?.frames ?: 0, proc?.medianMs ?: 0L, proc?.maxMs ?: 0L
+            )
+        )
     }
     private fun updateSquatUi(uiState: SquatUiState) {
         val binding = _fragmentCameraBinding ?: return
@@ -546,7 +584,12 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
             getString(R.string.squat_no_person)
         }
 
+        if (ENABLE_REP_LOG) {
+            state.suppressedRep?.let { logRep("SKIP", it, state.viewMode, uiState.procStats) }
+        }
+
         state.lastCompletedRep?.let { rep ->
+            if (ENABLE_REP_LOG) logRep("REP", rep, state.viewMode, uiState.procStats)
             binding.lastRepText.text = if (rep.isCorrect) {
                 getString(
                     R.string.squat_last_rep_ok,
@@ -564,6 +607,8 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
                 )
             }
         }
+
+
     }
 
     private fun updateFramingChecklist(framing: FramingStatus) {

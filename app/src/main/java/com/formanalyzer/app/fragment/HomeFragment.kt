@@ -29,12 +29,6 @@ class HomeFragment : Fragment() {
         binding.startSquatButton.setOnClickListener {
             findNavController().navigate(R.id.action_home_to_camera)
         }
-        binding.openHistoryButton.setOnClickListener {
-            findNavController().navigate(R.id.action_home_to_history)
-        }
-        binding.openSettingsButton.setOnClickListener {
-            findNavController().navigate(R.id.action_home_to_settings)
-        }
     }
 
     override fun onDestroyView() {
