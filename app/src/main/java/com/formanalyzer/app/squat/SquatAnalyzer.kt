@@ -33,6 +33,10 @@ class SquatAnalyzer(
 
     /** Timestamp of the last counted rep, used for the minimum interval between reps */
     private var lastCountedRepTimestampMs: Long? = null
+    private var repStartTimestampMs: Long? = null
+
+    /** Frames in a row skipped during a rep because the chosen leg was not visible */
+    private var skippedFramesInRep = 0
 
     private var previousTrunkLean: Double? = null
     private var previousTrunkLeanTimestampMs: Long? = null
@@ -53,6 +57,8 @@ class SquatAnalyzer(
         standingBaselines.clear()
         repSide = null
         lastCountedRepTimestampMs = null
+        repStartTimestampMs = null
+        skippedFramesInRep = 0
         previousTrunkLean = null
         previousTrunkLeanTimestampMs = null
         detectedViewMode = SquatViewMode.SIDE
@@ -79,8 +85,16 @@ class SquatAnalyzer(
         if(side==null){
             smoother.reset()
             previousTrunkLean =null
+            if(phase != SquatPhase.STANDING){
+                skippedFramesInRep++
+                if(skippedFramesInRep >= config.maxSkippedFramesInRep){
+                    // The chosen leg is lost for too long - drop the rep instead of waiting for it
+                    abandonRep()
+                }
+            }
             return noDetectedState()
         }
+        skippedFramesInRep = 0
         val landmarks = smoother.smooth(rawLandmarks)
         val shoulder = landmarks[side.shoulder]
         val hip1 = landmarks[side.hip]
@@ -127,6 +141,7 @@ class SquatAnalyzer(
                 if( kneeAngle < config.descendingEntryKneeAngleDeg){
                     phase = SquatPhase.DESCENDING
                     repSide = side
+                    repStartTimestampMs = timestampMs
                     minKneeAngleInRep = kneeAngle
                 }
             }
@@ -159,7 +174,8 @@ class SquatAnalyzer(
                 maxTrunkLeanVelocityDegPerSec = maxTrunkLeanVelocityInRep,
                 errors = errorsInRep.toSet(),
                 maxKneeValgusDeviationDeg = maxKneeValgusDeviationDegInRep,
-                maxTrunkLeanVelocityFullRepDegPerSec = maxTrunkLeanVelocityFullRepInRep
+                maxTrunkLeanVelocityFullRepDegPerSec = maxTrunkLeanVelocityFullRepInRep,
+                durationMs = timestampMs - (repStartTimestampMs ?: timestampMs)
             )
             val lastRepMs = lastCountedRepTimestampMs
             if(lastRepMs != null && timestampMs - lastRepMs < config.minRepIntervalMs){
@@ -172,6 +188,7 @@ class SquatAnalyzer(
             }
             phase = SquatPhase.STANDING
             repSide = null
+            repStartTimestampMs = null
             clearRepAccumulators()
         }
             return SquatAnalysisState(
@@ -186,7 +203,13 @@ class SquatAnalyzer(
             )
 
     }
-
+    private fun abandonRep(){
+        phase = SquatPhase.STANDING
+        repSide = null
+        repStartTimestampMs = null
+        skippedFramesInRep = 0
+        clearRepAccumulators()
+    }
     private fun updateTrunkVelocity(trunkLean: Double?, timestampMs: Long): Double{
         val lastLean = previousTrunkLean
         val lastTimestampMs = previousTrunkLeanTimestampMs

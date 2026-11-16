@@ -432,4 +432,44 @@ class SquatAnalyzerTest {
 
         assertTrue(second.isCorrect)
     }
+
+    @Test
+    fun `rep is dropped when the chosen leg is lost for too long`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        analyzer.step(frontPoseLegs(0.0, 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        analyzer.step(frontPoseLegs(shiftFor(140.0), 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        // left leg hidden for 20 frames, right leg visible
+        val hidden = (1..20).map {
+            analyzer.step(frontPoseLegs(shiftFor(130.0), 0.0, leftVisibility = 0.1, rightVisibility = 0.95))
+        }
+        val next = analyzer.step(frontPoseLegs(0.0, 0.0, leftVisibility = 0.1, rightVisibility = 0.95))
+
+        assertEquals(SquatPhase.STANDING, hidden.last().phase)
+        assertEquals(0, next.repCount)
+        assertTrue(next.personDetected)
+    }
+
+    @Test
+    fun `short loss of the chosen leg does not drop the rep`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.FRONT, config)
+        analyzer.step(frontPoseLegs(0.0, 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        analyzer.step(frontPoseLegs(shiftFor(140.0), 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        repeat(5) {
+            analyzer.step(frontPoseLegs(shiftFor(130.0), 0.0, leftVisibility = 0.1, rightVisibility = 0.95))
+        }
+        analyzer.step(frontPoseLegs(shiftFor(130.0), 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+        val end = analyzer.step(frontPoseLegs(0.0, 0.0, leftVisibility = 0.9, rightVisibility = 0.8))
+
+        assertEquals(1, end.repCount)
+        assertNotNull(end.lastCompletedRep)
+    }
+
+    @Test
+    fun `rep duration is measured from the start of the descent`() {
+        val analyzer = SquatAnalyzer(SquatViewMode.SIDE, config)
+        // descent starts at the 2nd frame, rep ends at the 9th -> 7 frames of 33 ms
+        val rep = analyzer.feed(*repKneeAngles).last().lastCompletedRep!!
+
+        assertEquals(7 * 33L, rep.durationMs)
+    }
 }

@@ -542,18 +542,19 @@ class CameraFragment : Fragment(), PoseLandmarkerHelper.LandmarkerListener {
 
     /** REP = counted rep, SKIP = rep ignored by the minimum interval between reps.
      * Fields after the error list: max trunk velocity over the whole rep (without the knee angle
-     * limit), number of frames, median and max frame processing time [ms]. */
+     * limit), number of frames, median and max frame processing time [ms], rep duration [ms]. */
     private fun logRep(prefix: String, rep: RepAnalysis, viewMode: SquatViewMode, proc: ProcStats?) {
         Log.d(
             REP_LOG_TAG,
             String.format(
-                Locale.US, "%s,%d,%d,%s,%.2f,%.2f,%.2f,%s,%.2f,%d,%d,%d",
+                Locale.US, "%s,%d,%d,%s,%.2f,%.2f,%.2f,%s,%.2f,%d,%d,%d,%d",
                 prefix, System.currentTimeMillis(), rep.repNumber, viewMode.name,
                 rep.minKneeAngleDeg, rep.maxTrunkLeanVelocityDegPerSec,
                 rep.maxKneeValgusDeviationDeg,
                 rep.errors.joinToString("|") { it.name },
                 rep.maxTrunkLeanVelocityFullRepDegPerSec,
-                proc?.frames ?: 0, proc?.medianMs ?: 0L, proc?.maxMs ?: 0L
+                proc?.frames ?: 0, proc?.medianMs ?: 0L, proc?.maxMs ?: 0L,
+                rep.durationMs
             )
         )
     }

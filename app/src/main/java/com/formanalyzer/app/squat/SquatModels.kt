@@ -23,7 +23,9 @@ data class RepAnalysis(
     val errors:Set<SquatErrorType>,
     val maxKneeValgusDeviationDeg: Double = 0.0,
     /** Diagnostics only: trunk lean velocity over the whole rep, without the knee angle limit */
-    val maxTrunkLeanVelocityFullRepDegPerSec: Double = 0.0
+    val maxTrunkLeanVelocityFullRepDegPerSec: Double = 0.0,
+    /** Diagnostics only: time from the start of the descent to the end of the rep */
+    val durationMs: Long = 0L
 ){
     val isCorrect: Boolean
         get() = errors.isEmpty()
@@ -53,6 +55,7 @@ data class SquatAnalyzerConfig(
     val orientationStableFrames: Int =5,
     /** Minimum time between two counted reps */
     val minRepIntervalMs: Long = 1000L,
+    val maxSkippedFramesInRep: Int = 15,
 
     val smoothingAlpha: Double =0.5
 
